@@ -52,7 +52,9 @@ B64_FILE="$(mktemp)"
 base64 "${AUDIO_FILE}" | tr -d '\n' > "${B64_FILE}"
 
 # ── Build Ability payload ─────────────────────────────────────────────────────
-PAYLOAD=$(jq -n \
+# Write to a file — base64 audio makes the payload too large for shell args/env.
+PAYLOAD_FILE="$(mktemp)"
+jq -n \
   --arg contract_version "1.0.0" \
   --arg external_run_id "${EXTERNAL_RUN_ID}" \
   --rawfile audio_base64 "${B64_FILE}" \
@@ -80,7 +82,7 @@ PAYLOAD=$(jq -n \
       else {}
       end
     )
-  }')
+  }' > "${PAYLOAD_FILE}"
 
 # ── Call the Ability endpoint ─────────────────────────────────────────────────
 rm -f "${B64_FILE}"
@@ -89,8 +91,9 @@ RESPONSE=$(curl -s --max-time 120 -X POST \
   "${WP_ABILITY_URL}${ABILITY_PATH}" \
   -H "${AUTH_HEADER}" \
   -H "Content-Type: application/json" \
-  -d "${PAYLOAD}")
+  --data "@${PAYLOAD_FILE}")
 
+rm -f "${PAYLOAD_FILE}"
 log "Ability response: ${RESPONSE}"
 
 # Output canonical result to stdout (consumed by run.sh)

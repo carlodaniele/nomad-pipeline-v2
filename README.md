@@ -39,99 +39,209 @@ bash scripts/ci/validate-contract.sh
 bash scripts/pipeline/dry-run.sh
 ```
 
-## Telegram Bot Setup
+## Setup Guide
 
-This pipeline is driven by a Telegram bot acting as the user-facing input interface. The bot must accept images, text messages, and audio files from authorized users.
+The pipeline runs entirely on GitHub Actions — no server or hosting required. Follow these steps once to configure all required credentials.
 
-### Step 1 — Create the bot
+---
+
+### 1 — Fork or clone this repository
+
+Fork this repository to your own GitHub account (or clone it and push to a new private repo). All configuration is done through GitHub repository secrets and variables, so the code itself never contains credentials.
+
+---
+
+### 2 — Create the Telegram bot (`TELEGRAM_BOT_TOKEN`)
 
 1. Open Telegram and start a conversation with [@BotFather](https://t.me/BotFather).
-2. Send `/newbot` and follow the prompts: choose a display name and a unique username ending in `bot`.
-3. BotFather will return a **bot token** in the format `123456789:AAF...`. Save it securely — this is the value for the `TELEGRAM_BOT_TOKEN` secret.
+2. Send the command `/newbot`.
+3. When prompted, enter a **display name** for the bot (e.g. `My Content Pipeline`).
+4. When prompted, enter a **username** — it must be unique and end in `bot` (e.g. `my_content_pipeline_bot`).
+5. BotFather replies with a message containing your **bot token**, a string in the format:
 
-### Step 2 — Get your chat ID
+   ```
+   123456789:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   ```
 
-The pipeline must restrict processing to authorized senders. You need the numeric chat ID of every authorized user or group.
+6. Copy this token. This is the value for the `TELEGRAM_BOT_TOKEN` secret. Keep it private — anyone with this token can control your bot.
 
-1. Start a conversation with your new bot (send any message).
-2. Open a browser and visit:
+> **Bot privacy in groups:** By default, bots in group chats only receive messages that mention them directly. If you plan to use the bot in a group, you must disable this:
+> 1. Send `/mybots` to BotFather.
+> 2. Select your bot → **Bot Settings** → **Group Privacy** → **Turn off**.
+
+---
+
+### 3 — Find your authorized chat IDs (`TELEGRAM_ALLOWED_CHAT_IDS`)
+
+The pipeline only processes messages from chat IDs you explicitly authorize. To find your chat ID:
+
+1. Open Telegram and send **any message** to your new bot (e.g. "hello").
+2. In a browser, open the following URL, replacing `<YOUR_TOKEN>` with your bot token:
+
    ```
    https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
    ```
-3. In the JSON response, look for `"chat": { "id": ... }`. The numeric value is your chat ID.
-4. Save it as `TELEGRAM_ALLOWED_CHAT_IDS` (comma-separated if multiple).
 
-### Step 3 — Configure bot privacy settings
+3. The response is a JSON object. Find the `"chat"` key inside the latest update:
 
-By default Telegram bots in groups only receive messages that mention them. For this pipeline to receive all messages in a group chat:
-
-1. In BotFather, send `/mybots` and select your bot.
-2. Go to **Bot Settings → Group Privacy** and set it to **Disabled**.
-   This allows the bot to receive all messages in groups it belongs to.
-
-For private (one-to-one) conversations no change is needed.
-
-### Step 4 — Configure file handling
-
-The bot must be able to receive photos and audio files. No additional BotFather configuration is required — Telegram bots receive all file types by default. Ensure your webhook or polling handler processes the following update types:
-
-| Update field   | Content                                         |
-|----------------|-------------------------------------------------|
-| `photo`        | Images sent by the user (pipeline buffers these) |
-| `voice`        | Inline audio recordings (OGG/Opus)               |
-| `audio`        | Uploaded audio files (MP3, M4A, WAV, etc.)       |
-| `document`     | Files sent as documents (alternative for audio)  |
-| `text`         | Plain text context messages                      |
-
-### Step 5 — Set the webhook (GitHub Actions trigger)
-
-Instead of running a persistent bot server, this pipeline uses a lightweight webhook that dispatches a GitHub Actions workflow on every relevant event.
-
-1. Deploy a minimal webhook receiver (see `adapters/` for reference implementations) or use a serverless function.
-2. Register the webhook with Telegram:
-   ```bash
-   curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
-     -H "Content-Type: application/json" \
-     -d '{"url": "https://your-webhook-endpoint/telegram"}'
+   ```json
+   "chat": {
+     "id": 123456789,
+     "first_name": "Carlo",
+     "type": "private"
+   }
    ```
-3. Verify the webhook is active:
-   ```bash
-   curl "https://api.telegram.org/bot<YOUR_TOKEN>/getWebhookInfo"
+
+4. The `"id"` value is your chat ID. For group chats, the ID is negative (e.g. `-100123456789`).
+5. Copy the numeric value. This is the value for `TELEGRAM_ALLOWED_CHAT_IDS`. To authorize multiple users or groups, separate their IDs with commas:
+
    ```
-   The response should show `"url"` set and `"pending_update_count": 0`.
+   123456789,-100987654321
+   ```
 
-### Step 6 — GitHub repository secrets
+> If `getUpdates` returns an empty `result` array, make sure you sent a message to the bot first, then refresh the page.
 
-Add the following secrets to your GitHub repository (**Settings → Secrets and variables → Actions**):
+---
 
-| Secret name                  | Description                                                    |
-|------------------------------|----------------------------------------------------------------|
-| `TELEGRAM_BOT_TOKEN`         | The bot token from BotFather                                   |
-| `TELEGRAM_ALLOWED_CHAT_IDS`  | Comma-separated list of authorized numeric chat IDs            |
-| `OPENAI_API_KEY`             | OpenAI API key for transcription and content generation        |
-| `WP_ABILITY_URL`             | WordPress site URL for the Ability endpoint (WP adapter only)  |
-| `WP_ABILITY_AUTH`            | WordPress application password or JWT token (WP adapter only)  |
+### 4 — Create a GitHub Personal Access Token (`GH_DISPATCH_TOKEN`)
 
-### Step 7 — Session flow reference
+GitHub Actions cannot trigger other workflow runs using its built-in token. You need a Personal Access Token (PAT) with the right permissions.
 
-Each user session is identified by the Telegram `chat_id`. The pipeline buffers images and text messages per session until an audio message arrives:
+1. Go to [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens) and click **Generate new token** → **Fine-grained tokens**.
+2. Set a **Token name** (e.g. `Nomad Pipeline v2 Dispatch`).
+3. Set an **Expiration** (1 year recommended; remember to rotate it before it expires).
+4. Under **Repository access**, select **Only selected repositories** and choose your pipeline repository.
+5. Under **Permissions**, expand **Repository permissions** and set:
+   - **Contents** → **Read and write**
+   - **Actions** → **Read and write**
+6. Click **Generate token** and copy the result immediately — GitHub shows it only once.
+
+This is the value for the `GH_DISPATCH_TOKEN` secret. This token allows the listener to:
+- Dispatch the `pipeline-run` workflow when audio is received.
+- Restart itself automatically after the maximum runtime is reached.
+
+---
+
+### 5 — Obtain an OpenAI API key (`OPENAI_API_KEY`)
+
+The pipeline uses OpenAI Whisper for audio transcription and GPT-4o for content generation.
+
+1. Go to [platform.openai.com/api-keys](https://platform.openai.com/api-keys) and click **Create new secret key**.
+2. Give it a name (e.g. `Nomad Pipeline v2`) and click **Create secret key**.
+3. Copy the key immediately — it is shown only once.
+
+This is the value for the `OPENAI_API_KEY` secret.
+
+> Make sure your OpenAI account has a valid payment method and sufficient credits. Whisper transcription and GPT-4o requests are billed per use.
+
+---
+
+### 6 — WordPress site URL and credentials (`WP_ABILITY_URL`, `WP_ABILITY_AUTH`)
+
+These are required only when using the `wordpress` adapter.
+
+#### `WP_ABILITY_URL`
+
+This is the base URL of your WordPress site, without a trailing slash. Example:
 
 ```
-[image message]  →  ack "Image received (N total)"
-[text message]   →  ack "Context added"
-[audio message]  →  ack "Processing started…"
-                     trigger GitHub Actions run
-                     → transcribe audio
-                     → upload images to CMS adapter
-                     → generate content (transcript + context)
-                     → publish draft
-                 →  ack "Done — <post_url>" or "Failed — <reason>"
+https://yoursite.com
 ```
 
-Each step sends an acknowledgment back to the user. A failed run always indicates whether it is retryable.
+The pipeline appends the Ability endpoint path automatically.
+
+#### `WP_ABILITY_AUTH`
+
+WordPress uses **Application Passwords** for API authentication (available since WordPress 5.6).
+
+1. Log in to your WordPress admin panel.
+2. Go to **Users → Profile** (or **Users → All Users** → click your username).
+3. Scroll down to the **Application Passwords** section.
+4. In the **New Application Password Name** field, enter `Nomad Pipeline v2`.
+5. Click **Add New Application Password**.
+6. WordPress generates a password in this format (with spaces):
+
+   ```
+   xxxx xxxx xxxx xxxx xxxx xxxx
+   ```
+
+7. Copy it immediately — it is shown only once.
+8. Combine your WordPress **username** and the application password into a single string, separated by a colon:
+
+   ```
+   your_username:xxxx xxxx xxxx xxxx xxxx xxxx
+   ```
+
+This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the password are intentional and must be preserved.
+
+> The user must have the `edit_posts` capability. An Administrator or Editor role is sufficient.
+
+> The WordPress site must have the **Nomad Pipeline Audio to Draft** plugin installed and activated.
+
+---
+
+### 7 — Add secrets and variables to GitHub
+
+1. In your GitHub repository, go to **Settings → Secrets and variables → Actions**.
+
+2. Under the **Secrets** tab, click **New repository secret** for each of the following:
+
+   | Secret name                 | Value                                      |
+   |-----------------------------|--------------------------------------------|
+   | `TELEGRAM_BOT_TOKEN`        | Bot token from BotFather (step 2)          |
+   | `TELEGRAM_ALLOWED_CHAT_IDS` | Comma-separated authorized chat IDs (step 3) |
+   | `GH_DISPATCH_TOKEN`         | GitHub PAT (step 4)                        |
+   | `OPENAI_API_KEY`            | OpenAI API key (step 5)                    |
+   | `WP_ABILITY_URL`            | WordPress site URL (step 6)                |
+   | `WP_ABILITY_AUTH`           | WordPress username:app_password (step 6)   |
+
+3. Under the **Variables** tab, click **New repository variable** and add:
+
+   | Variable name      | Value       |
+   |--------------------|-------------|
+   | `PIPELINE_ADAPTER` | `wordpress` |
+
+---
+
+### 8 — Start the listener
+
+The Telegram listener runs as a long-polling GitHub Actions job. It stays active for up to 5.5 hours, then restarts itself automatically.
+
+1. In your repository, go to **Actions → Telegram Listener**.
+2. Click **Run workflow** → **Run workflow**.
+3. The job starts within a few seconds. The bot is now active.
+
+To verify the listener is running, send a message to your bot — you should receive an immediate acknowledgment.
+
+> The listener also restarts automatically via a scheduled cron job every 6 hours as a safety net. You do not need to start it again manually after the first time unless you cancel it intentionally.
+
+---
+
+### Session flow reference
+
+Each user session is identified by the Telegram `chat_id`. The pipeline buffers images and text messages per session until an audio message arrives.
+
+```
+[photo]   →  bot replies "Image received (N total)"
+[text]    →  bot replies "Context added"
+[audio]   →  bot replies "Processing started…"
+              pipeline-run workflow is triggered
+                 → audio downloaded from Telegram
+                 → images uploaded to WordPress media library
+                 → audio transcribed (OpenAI Whisper)
+                 → draft post created via WordPress Ability
+              bot replies "Done! Draft published: <url>"
+              — or —
+              bot replies "Failed: <reason>"
+```
+
+Sessions are stored in memory for the duration of the listener run. Sending `/reset` clears the current session. Sending `/status` reports how many images and context messages are buffered.
+
+---
 
 ### Security notes
 
-- Never commit `TELEGRAM_BOT_TOKEN` or any credential to the repository.
-- Validate `chat_id` against `TELEGRAM_ALLOWED_CHAT_IDS` on every incoming update before any processing.
-- Reject unknown senders silently (do not expose bot behavior to unauthorized callers).
+- Never commit any credential or token to the repository.
+- `TELEGRAM_ALLOWED_CHAT_IDS` is the access control list. Only messages from listed chat IDs are processed; all others are silently ignored.
+- Rotate `GH_DISPATCH_TOKEN` before its expiration date.
+- Use a dedicated WordPress user for the API credentials rather than an administrator account if your site has multiple users.

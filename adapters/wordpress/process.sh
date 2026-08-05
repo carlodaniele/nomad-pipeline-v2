@@ -47,13 +47,15 @@ log "Gallery IDs: ${GALLERY_IDS}"
 
 # ── Encode audio as base64 ────────────────────────────────────────────────────
 log "Encoding audio"
-AUDIO_BASE64=$(base64 "${AUDIO_FILE}" | tr -d '\n')
+# Write to a temp file — passing large base64 as a shell argument exceeds ARG_MAX.
+B64_FILE="$(mktemp)"
+base64 "${AUDIO_FILE}" | tr -d '\n' > "${B64_FILE}"
 
 # ── Build Ability payload ─────────────────────────────────────────────────────
 PAYLOAD=$(jq -n \
   --arg contract_version "1.0.0" \
   --arg external_run_id "${EXTERNAL_RUN_ID}" \
-  --arg audio_base64 "${AUDIO_BASE64}" \
+  --rawfile audio_base64 "${B64_FILE}" \
   --arg mime_type "${AUDIO_MIME_TYPE}" \
   --arg context "${CONTEXT_TEXT}" \
   --argjson gallery_ids "${GALLERY_IDS}" \
@@ -81,6 +83,7 @@ PAYLOAD=$(jq -n \
   }')
 
 # ── Call the Ability endpoint ─────────────────────────────────────────────────
+rm -f "${B64_FILE}"
 log "Calling Ability endpoint"
 RESPONSE=$(curl -s -X POST \
   "${WP_ABILITY_URL}${ABILITY_PATH}" \

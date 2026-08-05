@@ -4,6 +4,9 @@ on:
   repository_dispatch:
     types: [telegram_audio]
 
+permissions:
+  contents: read
+
 jobs:
   run:
     runs-on: ubuntu-latest

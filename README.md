@@ -172,7 +172,7 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
 
 1. In your GitHub repository, go to **Settings → Secrets and variables → Actions**.
 
-2. Under the **Secrets** tab, click **New repository secret** for each of the following:
+2. Under the **Secrets** tab, select **Repository secrets** and click **New repository secret** for each of the following:
 
    | Secret name                 | Value                                      |
    |-----------------------------|--------------------------------------------|
@@ -182,7 +182,7 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
    | `WP_ABILITY_URL`            | WordPress site URL (step 5)                |
    | `WP_ABILITY_AUTH`           | WordPress username:app_password (step 5)   |
 
-3. Under the **Variables** tab, click **New repository variable** and add:
+3. Under the **Variables** tab, select **Repository variables** and click **New repository variable** and add:
 
    | Variable name      | Value       |
    |--------------------|-------------|

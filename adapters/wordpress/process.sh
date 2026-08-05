@@ -74,7 +74,7 @@ jq -n \
   --arg context "${CONTEXT_TEXT}" \
   --argjson audio_media_id "${AUDIO_MEDIA_ID}" \
   --argjson gallery_ids "${GALLERY_IDS}" \
-  '{
+  '{"input": {
     "contract_version": $contract_version,
     "external_run_id": $external_run_id,
     "source": "telegram",
@@ -94,7 +94,7 @@ jq -n \
       else {}
       end
     )
-  }' > "${PAYLOAD_FILE}"
+  }}' > "${PAYLOAD_FILE}"
 
 log "Payload: $(cat "${PAYLOAD_FILE}")"
 

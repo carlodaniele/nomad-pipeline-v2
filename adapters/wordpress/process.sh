@@ -84,12 +84,14 @@ PAYLOAD=$(jq -n \
 
 # ── Call the Ability endpoint ─────────────────────────────────────────────────
 rm -f "${B64_FILE}"
-log "Calling Ability endpoint"
-RESPONSE=$(curl -s -X POST \
+log "Calling Ability endpoint: ${WP_ABILITY_URL}${ABILITY_PATH}"
+RESPONSE=$(curl -s --max-time 120 -X POST \
   "${WP_ABILITY_URL}${ABILITY_PATH}" \
   -H "${AUTH_HEADER}" \
   -H "Content-Type: application/json" \
   -d "${PAYLOAD}")
+
+log "Ability response: ${RESPONSE}"
 
 # Output canonical result to stdout (consumed by run.sh)
 echo "${RESPONSE}"

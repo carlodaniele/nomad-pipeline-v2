@@ -21,7 +21,6 @@ jobs:
       - name: Run pipeline
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           WP_ABILITY_URL: ${{ secrets.WP_ABILITY_URL }}
           WP_ABILITY_AUTH: ${{ secrets.WP_ABILITY_AUTH }}
           CHAT_ID: ${{ github.event.client_payload.chat_id }}

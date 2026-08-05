@@ -122,21 +122,7 @@ This is the value for the `GH_DISPATCH_TOKEN` secret. This token allows the list
 
 ---
 
-### 5 — Obtain an OpenAI API key (`OPENAI_API_KEY`)
-
-The pipeline uses OpenAI Whisper for audio transcription and GPT-4o for content generation.
-
-1. Go to [platform.openai.com/api-keys](https://platform.openai.com/api-keys) and click **Create new secret key**.
-2. Give it a name (e.g. `Nomad Pipeline v2`) and click **Create secret key**.
-3. Copy the key immediately — it is shown only once.
-
-This is the value for the `OPENAI_API_KEY` secret.
-
-> Make sure your OpenAI account has a valid payment method and sufficient credits. Whisper transcription and GPT-4o requests are billed per use.
-
----
-
-### 6 — WordPress site URL and credentials (`WP_ABILITY_URL`, `WP_ABILITY_AUTH`)
+### 5 — WordPress site URL and credentials (`WP_ABILITY_URL`, `WP_ABILITY_AUTH`)
 
 These are required only when using the `wordpress` adapter.
 
@@ -178,6 +164,8 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
 
 > The WordPress site must have the **Nomad Pipeline Audio to Draft** plugin installed and activated.
 
+> **Note on AI costs:** transcription and content generation happen inside WordPress via the AI connector you configure in the plugin (Settings → AI Connector). You do not need a separate OpenAI API key for this pipeline.
+
 ---
 
 ### 7 — Add secrets and variables to GitHub
@@ -191,9 +179,8 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
    | `TELEGRAM_BOT_TOKEN`        | Bot token from BotFather (step 2)          |
    | `TELEGRAM_ALLOWED_CHAT_IDS` | Comma-separated authorized chat IDs (step 3) |
    | `GH_DISPATCH_TOKEN`         | GitHub PAT (step 4)                        |
-   | `OPENAI_API_KEY`            | OpenAI API key (step 5)                    |
-   | `WP_ABILITY_URL`            | WordPress site URL (step 6)                |
-   | `WP_ABILITY_AUTH`           | WordPress username:app_password (step 6)   |
+   | `WP_ABILITY_URL`            | WordPress site URL (step 5)                |
+   | `WP_ABILITY_AUTH`           | WordPress username:app_password (step 5)   |
 
 3. Under the **Variables** tab, click **New repository variable** and add:
 

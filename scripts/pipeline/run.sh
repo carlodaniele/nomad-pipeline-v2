@@ -67,6 +67,7 @@ if [[ ! -x "${ADAPTER_SCRIPT}" ]]; then
 fi
 
 RESULT=$(AUDIO_FILE="${AUDIO_FILE}" \
+         AUDIO_FILE_ID="${AUDIO_FILE_ID}" \
          AUDIO_MIME_TYPE="${AUDIO_MIME_TYPE}" \
          IMAGE_DIR="${WORK_DIR}" \
          IMAGE_COUNT="${IMG_COUNT}" \

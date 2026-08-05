@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # WordPress adapter for nomad-pipeline-v2.
-# Uploads images to WP media library, then calls the Ability endpoint with base64 audio.
+# Passes a Telegram signed_url to the Ability — WordPress downloads the audio directly.
 # Outputs a canonical result JSON to stdout.
 set -euo pipefail
 
 : "${WP_ABILITY_URL:?}"
 : "${WP_ABILITY_AUTH:?}"
-: "${AUDIO_FILE:?}"
-: "${AUDIO_MIME_TYPE:?}"
+: "${TELEGRAM_BOT_TOKEN:?}"
+: "${AUDIO_FILE_ID:?}"
 : "${EXTERNAL_RUN_ID:?}"
 
 IMAGE_DIR="${IMAGE_DIR:-}"
@@ -15,6 +15,7 @@ IMAGE_COUNT="${IMAGE_COUNT:-0}"
 CONTEXT_TEXT="${CONTEXT_TEXT:-}"
 
 ABILITY_PATH="/wp-json/wp-abilities/v1/abilities/nomad-pipeline-audio-to-draft/audio-to-post/run"
+TGAPI="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
 AUTH_HEADER="Authorization: Basic $(printf '%s' "${WP_ABILITY_AUTH}" | base64 | tr -d '\n')"
 
 log() { echo "[wp-adapter] $*" >&2; }
@@ -45,20 +46,18 @@ if [[ "${IMAGE_COUNT}" -gt 0 && -n "${IMAGE_DIR}" ]]; then
 fi
 log "Gallery IDs: ${GALLERY_IDS}"
 
-# ── Encode audio as base64 ────────────────────────────────────────────────────
-log "Encoding audio"
-# Write to a temp file — passing large base64 as a shell argument exceeds ARG_MAX.
-B64_FILE="$(mktemp)"
-base64 "${AUDIO_FILE}" | tr -d '\n' > "${B64_FILE}"
+# ── Get Telegram audio signed URL ─────────────────────────────────────────────
+log "Resolving audio URL"
+FILE_PATH=$(curl -sf "${TGAPI}/getFile?file_id=${AUDIO_FILE_ID}" | jq -r '.result.file_path')
+AUDIO_URL="https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${FILE_PATH}"
+log "Audio URL resolved"
 
 # ── Build Ability payload ─────────────────────────────────────────────────────
-# Write to a file — base64 audio makes the payload too large for shell args/env.
 PAYLOAD_FILE="$(mktemp)"
 jq -n \
   --arg contract_version "1.0.0" \
   --arg external_run_id "${EXTERNAL_RUN_ID}" \
-  --rawfile audio_base64 "${B64_FILE}" \
-  --arg mime_type "${AUDIO_MIME_TYPE}" \
+  --arg audio_url "${AUDIO_URL}" \
   --arg context "${CONTEXT_TEXT}" \
   --argjson gallery_ids "${GALLERY_IDS}" \
   '{
@@ -69,8 +68,7 @@ jq -n \
       "telegram_context": $context
     },
     "audio": {
-      "base64": $audio_base64,
-      "mime_type": $mime_type
+      "signed_url": $audio_url
     },
     "publish_options": {
       "status": "draft",
@@ -85,7 +83,6 @@ jq -n \
   }' > "${PAYLOAD_FILE}"
 
 # ── Call the Ability endpoint ─────────────────────────────────────────────────
-rm -f "${B64_FILE}"
 log "Calling Ability endpoint: ${WP_ABILITY_URL}${ABILITY_PATH}"
 RESPONSE=$(curl -s --max-time 120 -X POST \
   "${WP_ABILITY_URL}${ABILITY_PATH}" \

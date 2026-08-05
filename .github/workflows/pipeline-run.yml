@@ -1,0 +1,33 @@
+name: Pipeline Run
+
+on:
+  repository_dispatch:
+    types: [telegram_audio]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update -q && sudo apt-get install -yq jq curl
+
+      - name: Run pipeline
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WP_ABILITY_URL: ${{ secrets.WP_ABILITY_URL }}
+          WP_ABILITY_AUTH: ${{ secrets.WP_ABILITY_AUTH }}
+          CHAT_ID: ${{ github.event.client_payload.chat_id }}
+          EXTERNAL_RUN_ID: ${{ github.event.client_payload.external_run_id }}
+          AUDIO_FILE_ID: ${{ github.event.client_payload.audio_file_id }}
+          AUDIO_MIME_TYPE: ${{ github.event.client_payload.audio_mime_type }}
+          IMAGE_FILE_IDS: ${{ toJson(github.event.client_payload.image_file_ids) }}
+          CONTEXT_TEXT: ${{ github.event.client_payload.context_text }}
+          ADAPTER: ${{ github.event.client_payload.adapter }}
+        run: |
+          chmod +x scripts/pipeline/run.sh adapters/wordpress/process.sh
+          bash scripts/pipeline/run.sh

@@ -15,6 +15,8 @@ required_dirs=(
 
 required_files=(
   "$ROOT_DIR/README.md"
+  "$ROOT_DIR/requirements.txt"
+  "$ROOT_DIR/.env.example"
   "$ROOT_DIR/docs/contracts/ability-audio-to-post-v1.md"
   "$ROOT_DIR/docs/contracts/error-model.md"
   "$ROOT_DIR/docs/contracts/schemas/input-v1.json"
@@ -22,6 +24,10 @@ required_files=(
   "$ROOT_DIR/docs/contracts/examples/request-valid.json"
   "$ROOT_DIR/docs/contracts/examples/response-success.json"
   "$ROOT_DIR/docs/contracts/examples/response-failed.json"
+  "$ROOT_DIR/scripts/pipeline/telegram-webhook.py"
+  "$ROOT_DIR/scripts/pipeline/run.sh"
+  "$ROOT_DIR/adapters/wordpress/process.sh"
+  "$ROOT_DIR/.github/workflows/pipeline-run.yml"
 )
 
 failed=0

@@ -24,11 +24,9 @@ required_files=(
   "$ROOT_DIR/docs/contracts/examples/request-valid.json"
   "$ROOT_DIR/docs/contracts/examples/response-success.json"
   "$ROOT_DIR/docs/contracts/examples/response-failed.json"
-  "$ROOT_DIR/scripts/pipeline/telegram-listener.py"
-  "$ROOT_DIR/scripts/pipeline/run.sh"
+  "$ROOT_DIR/scripts/pipeline/process-ingest.sh"
   "$ROOT_DIR/adapters/wordpress/process.sh"
-  "$ROOT_DIR/.github/workflows/pipeline-run.yml"
-  "$ROOT_DIR/.github/workflows/telegram-listener.yml"
+  "$ROOT_DIR/.github/workflows/ingest-audio.yml"
 )
 
 failed=0

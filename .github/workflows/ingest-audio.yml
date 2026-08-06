@@ -1,4 +1,4 @@
-name: Ingest Audio Pipeline
+name: Nomad Pipeline Execution
 
 on:
   push:
@@ -19,11 +19,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  process:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout ingest branch
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update -q && sudo apt-get install -yq jq curl
 
-      - name: Process audio sessions
+      - name: Run Processing Script
         env:
           WP_ABILITY_URL: ${{ secrets.WP_ABILITY_URL }}
           WP_ABILITY_AUTH: ${{ secrets.WP_ABILITY_AUTH }}
@@ -57,7 +57,7 @@ jobs:
               bash scripts/pipeline/process-ingest.sh
           done
 
-      - name: Commit archive changes
+      - name: Commit changes
         run: |
           if git diff --quiet; then
             echo "No archive changes to commit."

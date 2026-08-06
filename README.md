@@ -1,15 +1,13 @@
 # Nomad Pipeline v2
 
-Adapter-first, CMS-agnostic pipeline that converts Telegram audio, optional images, and optional context text into AI-generated, publish-ready content.
+Adapter-first, CMS-agnostic pipeline using a strict legacy-style runtime flow: one workflow starts only when an audio file arrives in `uploads/`.
 
 ## How it works
 
-1. The user sends optional images and optional text to the Telegram bot.
-2. The GitHub Actions Telegram listener buffers that session per chat ID.
-3. When the user sends audio, the listener uploads session files to `uploads/<session_id>/` on branch `ingest`.
-4. The audio file push triggers the `Ingest Audio Pipeline` workflow (legacy-style event trigger).
-5. The workflow runs the selected adapter (WordPress by default): upload images, upload audio, build Ability input JSON, call Ability.
-6. Session files are moved from `uploads/` to `processed/` (or `failed/` if an error occurs).
+1. Files are staged into `uploads/<session_id>/` (images and optional `context.txt`).
+2. When `audio.<ext>` is added in that session folder, the workflow starts automatically.
+3. The workflow runs the selected adapter (WordPress by default): upload images, upload audio, build Ability input JSON, call Ability.
+4. Session files are moved from `uploads/` to `processed/` (or `failed/` if an error occurs), then the job ends.
 
 ## Goals
 
@@ -40,9 +38,9 @@ bash scripts/ci/validate-contract.sh
 bash scripts/pipeline/dry-run.sh
 ```
 
-## Legacy-Style Ingest Mode (GitHub-Only)
+## Legacy-Style Ingest Mode (Single Runtime Workflow)
 
-This mode keeps ingestion and processing on GitHub Actions. Processing starts only when an audio file is pushed to `ingest` branch.
+This mode uses one runtime workflow only. Processing starts only when an audio file is pushed under `uploads/**` on branch `ingest`.
 
 ### 1 - Create and push ingest branch
 
@@ -59,18 +57,14 @@ Required for processing workflow:
 - `WP_ABILITY_URL`
 - `WP_ABILITY_AUTH`
 
-Required for Telegram listener (GitHub -> ingest):
+Required for adapter execution:
 
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_ALLOWED_CHAT_IDS`
-- `GH_INGEST_TOKEN` (Fine-grained PAT with `Contents: Read and write` on this repo)
-- `GH_DISPATCH_TOKEN` (Fine-grained PAT with `Actions: Read and write` for self-restart)
+- `WP_ABILITY_URL`
+- `WP_ABILITY_AUTH`
 
-### 3 - Start the GitHub listener
+### 3 - Stage session files
 
-1. Open **Actions** in your repository.
-2. Run workflow **Telegram Listener**.
-3. The listener buffers images/text and stages files to `ingest` when audio arrives.
+Create a session folder in `uploads/` and push images/text first, audio last.
 
 ### 4 - Trigger behavior
 
@@ -143,28 +137,9 @@ The pipeline only processes messages from chat IDs you explicitly authorize. To 
 
 ---
 
-### 4 — Create GitHub Personal Access Tokens (`GH_INGEST_TOKEN`, `GH_DISPATCH_TOKEN`)
+### 4 — Trigger source
 
-The Telegram listener uploads files to your repository `ingest` branch and self-restarts from inside Actions. You need PATs with the right permissions.
-
-1. Go to [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens) and click **Generate new token** → **Fine-grained tokens**.
-2. Set a **Token name** (e.g. `Nomad Pipeline v2 Ingest`).
-3. Set an **Expiration** (1 year recommended; remember to rotate it before it expires).
-4. Under **Repository access**, select **Only selected repositories** and choose your pipeline repository.
-5. Under **Permissions**, expand **Repository permissions** and set:
-   - **Contents** → **Read and write**
-   - **Actions** → **Read-only** (optional)
-6. Click **Generate token** and copy the result immediately — GitHub shows it only once.
-
-Create a second token for self-restart:
-
-1. Generate another fine-grained token (e.g. `Nomad Pipeline v2 Dispatch`).
-2. Same repo scope.
-3. Permissions:
-   - **Actions** → **Read and write**
-   - **Contents** → **Read-only**
-
-Use these as repository secrets `GH_INGEST_TOKEN` and `GH_DISPATCH_TOKEN`.
+The workflow trigger is the Git push that introduces `uploads/**/audio.<ext>` on branch `ingest`.
 
 ---
 
@@ -222,10 +197,6 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
 
    | Secret name                 | Value                                      |
    |-----------------------------|--------------------------------------------|
-   | `TELEGRAM_BOT_TOKEN`        | Bot token from BotFather (step 2)          |
-   | `TELEGRAM_ALLOWED_CHAT_IDS` | Comma-separated authorized chat IDs (step 3) |
-   | `GH_INGEST_TOKEN`           | PAT for ingest branch file uploads (step 4) |
-   | `GH_DISPATCH_TOKEN`         | PAT for listener self-restart (step 4)      |
    | `WP_ABILITY_URL`            | WordPress site URL (step 5)                |
    | `WP_ABILITY_AUTH`           | WordPress username:app_password (step 5)   |
 
@@ -238,41 +209,30 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
 
 ---
 
-### 8 — Start Telegram listener (GitHub)
+### 8 — Runtime workflow
 
-1. Open **Actions → Telegram Listener**.
-2. Click **Run workflow**.
-3. Keep it active via the built-in self-restart step.
-
-The GitHub workflow `Ingest Audio Pipeline` starts only on audio file push under `uploads/**` on branch `ingest`.
+`Ingest Audio Pipeline` starts automatically on audio file push under `uploads/**` on branch `ingest`.
 
 ---
 
 ### Session flow reference
 
-Each user session is identified by the Telegram `chat_id`. The listener buffers images and text messages per session until an audio message arrives.
+Each session is represented by one folder under `uploads/`.
 
 ```
-[photo]   →  bot replies "Image received (N total)"
-[text]    →  bot replies "Context added"
-[audio]   →  bot replies "Audio received. Preparing ingest session"
-              listener uploads files to uploads/<session_id>/ on branch ingest
+stage image(s) + optional context.txt in uploads/<session_id>/
+stage audio as uploads/<session_id>/audio.<ext>
               push of audio file triggers Ingest Audio Pipeline
                  → images uploaded to WordPress media library
                  → audio uploaded to WordPress media library
                  → ability called with structured JSON input
-              bot replies "Done! Draft published: <url>"
-              — or —
-              bot replies "Failed: <reason>"
+              session moved to processed/ or failed/
 ```
-
-Sessions are stored in memory for the duration of the listener run. Sending `/reset` clears the current session.
 
 ---
 
 ### Security notes
 
 - Never commit any credential or token to the repository.
-- `TELEGRAM_ALLOWED_CHAT_IDS` is the access control list. Only messages from listed chat IDs are processed; all others are silently ignored.
-- Rotate `GH_INGEST_TOKEN` and `GH_DISPATCH_TOKEN` before expiration.
+- Keep `uploads/` as temporary staging only; do not use it as permanent storage.
 - Use a dedicated WordPress user for the API credentials rather than an administrator account if your site has multiple users.

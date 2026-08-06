@@ -4,9 +4,12 @@ on:
   push:
     branches: [ingest]
     paths:
-      - 'uploads/*.oga'
-      - 'uploads/*.mp3'
-      - 'uploads/*.m4a'
+      - 'uploads/**/*.oga'
+      - 'uploads/**/*.mp3'
+      - 'uploads/**/*.m4a'
+      - 'uploads/**/*.ogg'
+      - 'uploads/**/*.wav'
+      - 'uploads/**/*.webm'
 
 permissions:
   contents: write
@@ -40,7 +43,7 @@ jobs:
           chmod +x scripts/pipeline/process-ingest.sh adapters/wordpress/process.sh
           mapfile -t AUDIO_FILES < <(
             git diff --name-only "${BEFORE_SHA}" "${CURRENT_SHA}" \
-              | grep -E '^uploads/[^/]+\.(mp3|m4a|oga)$' || true
+              | grep -E '^uploads/.+\.(mp3|m4a|oga|ogg|wav|webm)$' || true
           )
 
           if [[ ${#AUDIO_FILES[@]} -eq 0 ]]; then

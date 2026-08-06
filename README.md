@@ -4,11 +4,12 @@ Adapter-first, CMS-agnostic pipeline that converts Telegram audio, optional imag
 
 ## How it works
 
-1. The user sends optional images to the Telegram bot. Each image is acknowledged and buffered for the current session.
-2. The user sends optional text messages providing context for the AI prompt. Each message is acknowledged and buffered.
-3. The user sends an audio message. This triggers a GitHub Actions run.
-4. The pipeline downloads the audio, transcribes it via AI, uploads the buffered images to the target CMS adapter to obtain media IDs, generates structured content using the transcript and text context, and publishes a draft via the configured adapter.
-5. The bot sends the user a confirmation message with the published post URL, or a clear error message if the run failed.
+1. The user sends optional images and optional text to the Telegram bot.
+2. The GitHub Actions Telegram listener buffers that session per chat ID.
+3. When the user sends audio, the listener uploads session files to `uploads/<session_id>/` on branch `ingest`.
+4. The audio file push triggers the `Ingest Audio Pipeline` workflow (legacy-style event trigger).
+5. The workflow runs the selected adapter (WordPress by default): upload images, upload audio, build Ability input JSON, call Ability.
+6. Session files are moved from `uploads/` to `processed/` (or `failed/` if an error occurs).
 
 ## Goals
 
@@ -38,6 +39,45 @@ bash scripts/ci/validate-structure.sh
 bash scripts/ci/validate-contract.sh
 bash scripts/pipeline/dry-run.sh
 ```
+
+## Legacy-Style Ingest Mode (GitHub-Only)
+
+This mode keeps ingestion and processing on GitHub Actions. Processing starts only when an audio file is pushed to `ingest` branch.
+
+### 1 - Create and push ingest branch
+
+```bash
+git checkout -b ingest
+git push -u origin ingest
+git checkout main
+```
+
+### 2 - Add GitHub secrets
+
+Required for processing workflow:
+
+- `WP_ABILITY_URL`
+- `WP_ABILITY_AUTH`
+
+Required for Telegram listener (GitHub -> ingest):
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_ALLOWED_CHAT_IDS`
+- `GH_INGEST_TOKEN` (Fine-grained PAT with `Contents: Read and write` on this repo)
+- `GH_DISPATCH_TOKEN` (Fine-grained PAT with `Actions: Read and write` for self-restart)
+
+### 3 - Start the GitHub listener
+
+1. Open **Actions** in your repository.
+2. Run workflow **Telegram Listener**.
+3. The listener buffers images/text and stages files to `ingest` when audio arrives.
+
+### 4 - Trigger behavior
+
+- Images/text only: no processing run.
+- Audio pushed under `uploads/<session_id>/audio.<ext>`: processing starts automatically.
+- Success: session moved to `processed/`.
+- Failure: session moved to `failed/`.
 
 ## Setup Guide
 
@@ -103,22 +143,28 @@ The pipeline only processes messages from chat IDs you explicitly authorize. To 
 
 ---
 
-### 4 — Create a GitHub Personal Access Token (`GH_DISPATCH_TOKEN`)
+### 4 — Create GitHub Personal Access Tokens (`GH_INGEST_TOKEN`, `GH_DISPATCH_TOKEN`)
 
-GitHub Actions cannot trigger other workflow runs using its built-in token. You need a Personal Access Token (PAT) with the right permissions.
+The Telegram listener uploads files to your repository `ingest` branch and self-restarts from inside Actions. You need PATs with the right permissions.
 
 1. Go to [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens) and click **Generate new token** → **Fine-grained tokens**.
-2. Set a **Token name** (e.g. `Nomad Pipeline v2 Dispatch`).
+2. Set a **Token name** (e.g. `Nomad Pipeline v2 Ingest`).
 3. Set an **Expiration** (1 year recommended; remember to rotate it before it expires).
 4. Under **Repository access**, select **Only selected repositories** and choose your pipeline repository.
 5. Under **Permissions**, expand **Repository permissions** and set:
    - **Contents** → **Read and write**
-   - **Actions** → **Read and write**
+   - **Actions** → **Read-only** (optional)
 6. Click **Generate token** and copy the result immediately — GitHub shows it only once.
 
-This is the value for the `GH_DISPATCH_TOKEN` secret. This token allows the listener to:
-- Dispatch the `pipeline-run` workflow when audio is received.
-- Restart itself automatically after the maximum runtime is reached.
+Create a second token for self-restart:
+
+1. Generate another fine-grained token (e.g. `Nomad Pipeline v2 Dispatch`).
+2. Same repo scope.
+3. Permissions:
+   - **Actions** → **Read and write**
+   - **Contents** → **Read-only**
+
+Use these as repository secrets `GH_INGEST_TOKEN` and `GH_DISPATCH_TOKEN`.
 
 ---
 
@@ -178,7 +224,8 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
    |-----------------------------|--------------------------------------------|
    | `TELEGRAM_BOT_TOKEN`        | Bot token from BotFather (step 2)          |
    | `TELEGRAM_ALLOWED_CHAT_IDS` | Comma-separated authorized chat IDs (step 3) |
-   | `GH_DISPATCH_TOKEN`         | GitHub PAT (step 4)                        |
+   | `GH_INGEST_TOKEN`           | PAT for ingest branch file uploads (step 4) |
+   | `GH_DISPATCH_TOKEN`         | PAT for listener self-restart (step 4)      |
    | `WP_ABILITY_URL`            | WordPress site URL (step 5)                |
    | `WP_ABILITY_AUTH`           | WordPress username:app_password (step 5)   |
 
@@ -187,42 +234,39 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
    | Variable name      | Value       |
    |--------------------|-------------|
    | `PIPELINE_ADAPTER` | `wordpress` |
+   | `INGEST_BRANCH`    | `ingest`    |
 
 ---
 
-### 8 — Start the listener
+### 8 — Start Telegram listener (GitHub)
 
-The Telegram listener runs as a long-polling GitHub Actions job. It stays active for up to 5.5 hours, then restarts itself automatically.
+1. Open **Actions → Telegram Listener**.
+2. Click **Run workflow**.
+3. Keep it active via the built-in self-restart step.
 
-1. In your repository, go to **Actions → Telegram Listener**.
-2. Click **Run workflow** → **Run workflow**.
-3. The job starts within a few seconds. The bot is now active.
-
-To verify the listener is running, send a message to your bot — you should receive an immediate acknowledgment.
-
-> The listener also restarts automatically via a scheduled cron job every 6 hours as a safety net. You do not need to start it again manually after the first time unless you cancel it intentionally.
+The GitHub workflow `Ingest Audio Pipeline` starts only on audio file push under `uploads/**` on branch `ingest`.
 
 ---
 
 ### Session flow reference
 
-Each user session is identified by the Telegram `chat_id`. The pipeline buffers images and text messages per session until an audio message arrives.
+Each user session is identified by the Telegram `chat_id`. The listener buffers images and text messages per session until an audio message arrives.
 
 ```
 [photo]   →  bot replies "Image received (N total)"
 [text]    →  bot replies "Context added"
-[audio]   →  bot replies "Processing started…"
-              pipeline-run workflow is triggered
-                 → audio downloaded from Telegram
+[audio]   →  bot replies "Audio received. Preparing ingest session"
+              listener uploads files to uploads/<session_id>/ on branch ingest
+              push of audio file triggers Ingest Audio Pipeline
                  → images uploaded to WordPress media library
-                 → audio transcribed (OpenAI Whisper)
-                 → draft post created via WordPress Ability
+                 → audio uploaded to WordPress media library
+                 → ability called with structured JSON input
               bot replies "Done! Draft published: <url>"
               — or —
               bot replies "Failed: <reason>"
 ```
 
-Sessions are stored in memory for the duration of the listener run. Sending `/reset` clears the current session. Sending `/status` reports how many images and context messages are buffered.
+Sessions are stored in memory for the duration of the listener run. Sending `/reset` clears the current session.
 
 ---
 
@@ -230,5 +274,5 @@ Sessions are stored in memory for the duration of the listener run. Sending `/re
 
 - Never commit any credential or token to the repository.
 - `TELEGRAM_ALLOWED_CHAT_IDS` is the access control list. Only messages from listed chat IDs are processed; all others are silently ignored.
-- Rotate `GH_DISPATCH_TOKEN` before its expiration date.
+- Rotate `GH_INGEST_TOKEN` and `GH_DISPATCH_TOKEN` before expiration.
 - Use a dedicated WordPress user for the API credentials rather than an administrator account if your site has multiple users.

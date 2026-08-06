@@ -3,12 +3,14 @@ name: Telegram Listener
 on:
   # Start manually from the Actions tab
   workflow_dispatch:
-  # Safety net: restart every 6 hours in case the self-restart step fails
+  # Safety net in case the self-restart step misses.
   schedule:
     - cron: '0 */6 * * *'
 
-# Long-running job — GitHub Actions hard limit is 6 hours.
-# The listener script exits after 5.5 h so the self-restart step has time to fire.
+concurrency:
+  group: telegram-listener-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   listen:
     runs-on: ubuntu-latest
@@ -27,16 +29,16 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ALLOWED_CHAT_IDS: ${{ secrets.TELEGRAM_ALLOWED_CHAT_IDS }}
+          GH_INGEST_TOKEN: ${{ secrets.GH_INGEST_TOKEN }}
           GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          PIPELINE_ADAPTER: ${{ vars.PIPELINE_ADAPTER || 'wordpress' }}
-          # 5.5 hours in seconds — leaves room for the self-restart step below
+          INGEST_BRANCH: ${{ vars.INGEST_BRANCH || 'ingest' }}
+          # 5.5 hours in seconds — leaves room for self-restart below
           LISTENER_MAX_RUNTIME: '19800'
         run: python scripts/pipeline/telegram-listener.py
 
-      # Trigger a new listener run so polling continues without interruption.
-      # Requires GH_DISPATCH_TOKEN (PAT) because GITHUB_TOKEN cannot trigger
-      # new workflow runs from within a workflow run.
+      # Keep listener active without manual intervention.
+      # Uses PAT because GITHUB_TOKEN cannot start a new run from within a run.
       - name: Self-restart listener
         if: success()
         env:

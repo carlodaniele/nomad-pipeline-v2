@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""
-Telegram long-polling listener for nomad-pipeline-v2.
+"""Telegram long-polling listener for nomad-pipeline-v2.
 
-Runs entirely inside GitHub Actions — no webhook server required.
-Buffers images and text per chat_id in memory. On audio message,
-dispatches a repository_dispatch event to trigger pipeline-run.yml,
-then clears the session. Exits gracefully after LISTENER_MAX_RUNTIME
-seconds so the workflow can self-restart.
+Runs inside GitHub Actions.
+Buffers images and text per chat_id in memory.
+On audio message, uploads session files to `ingest` branch under
+`uploads/<session_id>/...`; the audio file push then triggers
+the legacy-style ingest workflow.
 """
 
+import base64
 import json
 import os
-import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -22,9 +22,9 @@ ALLOWED_CHAT_IDS = {
     for c in os.environ.get("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",")
     if c.strip()
 }
-GH_TOKEN = os.environ["GH_DISPATCH_TOKEN"]
+GH_TOKEN = os.environ.get("GH_INGEST_TOKEN") or os.environ.get("GH_DISPATCH_TOKEN")
 GH_REPO = os.environ["GH_REPO"]
-ADAPTER = os.environ.get("PIPELINE_ADAPTER", "wordpress")
+INGEST_BRANCH = os.environ.get("INGEST_BRANCH", "ingest")
 # Exit before GitHub Actions' 6-hour job limit so self-restart can fire.
 MAX_RUNTIME = int(os.environ.get("LISTENER_MAX_RUNTIME", str(5 * 3600 + 30 * 60)))
 
@@ -39,12 +39,12 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def _post(url: str, payload: dict, timeout: int = 10) -> dict | None:
+def _post(url: str, payload: dict, timeout: int = 10, headers: dict | None = None) -> dict | None:
     body = json.dumps(payload).encode()
     req = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **(headers or {})},
         method="POST",
     )
     try:
@@ -71,13 +71,53 @@ def tg_get_updates(offset: int | None, timeout: int = 55) -> list[dict]:
     return []
 
 
-def gh_dispatch(payload: dict) -> bool:
+def _get_json(url: str, timeout: int = 20) -> dict | None:
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        log(f"HTTP {exc.code} from {url}")
+    except Exception as exc:
+        log(f"Request error: {exc}")
+    return None
+
+
+def _get_bytes(url: str, timeout: int = 60) -> bytes | None:
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as exc:
+        log(f"HTTP {exc.code} while downloading {url}")
+    except Exception as exc:
+        log(f"Download error: {exc}")
+    return None
+
+
+def tg_download(file_id: str) -> tuple[bytes, str] | None:
+    meta = _get_json(f"{_TGAPI}/getFile?file_id={urllib.parse.quote(file_id)}")
+    if not meta or not meta.get("ok"):
+        return None
+    file_path = meta["result"]["file_path"]
+    blob = _get_bytes(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}")
+    if blob is None:
+        return None
+    return blob, file_path
+
+
+def gh_put_file(path: str, content: bytes, message: str) -> bool:
+    if not GH_TOKEN:
+        log("Missing GH token for ingest writes.")
+        return False
+
     body = json.dumps({
-        "event_type": "telegram_audio",
-        "client_payload": payload,
+        "message": message,
+        "content": base64.b64encode(content).decode(),
+        "branch": INGEST_BRANCH,
     }).encode()
     req = urllib.request.Request(
-        f"https://api.github.com/repos/{GH_REPO}/dispatches",
+        f"https://api.github.com/repos/{GH_REPO}/contents/{path}",
         data=body,
         headers={
             "Authorization": f"Bearer {GH_TOKEN}",
@@ -85,13 +125,13 @@ def gh_dispatch(payload: dict) -> bool:
             "X-GitHub-Api-Version": "2022-11-28",
             "Content-Type": "application/json",
         },
-        method="POST",
+        method="PUT",
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.status == 204
+            return resp.status in (200, 201)
     except urllib.error.HTTPError as exc:
-        log(f"GitHub dispatch HTTP {exc.code}")
+        log(f"GitHub upload HTTP {exc.code} for {path}")
         return False
 
 
@@ -138,31 +178,53 @@ def process(message: dict) -> None:
 
     audio = message.get("voice") or message.get("audio") or message.get("document")
     if audio:
-        file_id = audio["file_id"]
-        mime_type = audio.get("mime_type", "audio/ogg")
-        external_run_id = f"tg-{chat_id}-{message['message_id']}"
+        session_id = f"{chat_id}-{message['message_id']}"
+        base_path = f"uploads/{session_id}"
 
-        tg_send(chat_id, "Processing started… I'll notify you when done.")
+        tg_send(chat_id, "Audio received. Preparing ingest session…")
 
-        ok = gh_dispatch({
-            "chat_id": chat_id,
-            "external_run_id": external_run_id,
-            "audio_file_id": file_id,
-            "audio_mime_type": mime_type,
-            "image_file_ids": s["images"],
-            "context_text": "\n".join(s["context"]),
-            "adapter": ADAPTER,
-        })
+        context_text = "\n".join(s["context"]).strip()
+        if context_text:
+            gh_put_file(
+                f"{base_path}/context.txt",
+                context_text.encode(),
+                f"ingest: context {session_id}",
+            )
+
+        for idx, image_id in enumerate(s["images"]):
+            downloaded = tg_download(image_id)
+            if not downloaded:
+                continue
+            img_blob, _ = downloaded
+            gh_put_file(
+                f"{base_path}/img_{idx}.jpg",
+                img_blob,
+                f"ingest: image {idx} {session_id}",
+            )
+
+        audio_blob = tg_download(audio["file_id"])
+        if not audio_blob:
+            tg_send(chat_id, "Audio download failed. Please try again.")
+            return
+
+        audio_bytes, audio_path = audio_blob
+        ext = audio_path.rsplit(".", 1)[-1].lower() if "." in audio_path else "ogg"
+        ok = gh_put_file(
+            f"{base_path}/audio.{ext}",
+            audio_bytes,
+            f"ingest: audio trigger {session_id}",
+        )
 
         if ok:
-            log(f"Dispatched pipeline run: {external_run_id}")
+            log(f"Ingest staged: {session_id}")
+            tg_send(chat_id, "Ingest staged. Processing started.")
             _sessions.pop(chat_id, None)
         else:
-            tg_send(chat_id, "Failed to start pipeline. Please try again.")
+            tg_send(chat_id, "Failed to stage ingest session on GitHub.")
 
 
 def main() -> None:
-    log(f"Listener started. Max runtime: {MAX_RUNTIME}s. Repo: {GH_REPO}")
+    log(f"Listener started. Max runtime: {MAX_RUNTIME}s. Repo: {GH_REPO} Branch: {INGEST_BRANCH}")
     deadline = time.time() + MAX_RUNTIME
     offset: int | None = None
     errors = 0

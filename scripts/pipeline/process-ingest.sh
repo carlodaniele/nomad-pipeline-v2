@@ -19,6 +19,7 @@ SESSION_DIR="$(dirname "${ABS_AUDIO_PATH}")"
 SESSION_NAME="$(basename "${SESSION_DIR}")"
 WORK_DIR="$(mktemp -d)"
 ADAPTER_SCRIPT="${ROOT_DIR}/adapters/${ADAPTER}/process.sh"
+UPLOADS_DIR="${ROOT_DIR}/uploads"
 
 cleanup() {
   rm -rf "${WORK_DIR}"
@@ -46,19 +47,42 @@ AUDIO_MIME_TYPE="$(mime_from_ext "${ABS_AUDIO_PATH}")"
 AUDIO_FILE="${WORK_DIR}/audio.${ABS_AUDIO_PATH##*.}"
 cp "${ABS_AUDIO_PATH}" "${AUDIO_FILE}"
 
-# Normalize image names for adapter expectations.
-img_index=0
-shopt -s nullglob
-for img in "${SESSION_DIR}"/*.jpg "${SESSION_DIR}"/*.jpeg "${SESSION_DIR}"/*.png "${SESSION_DIR}"/*.webp; do
-  cp "${img}" "${WORK_DIR}/img_${img_index}.jpg"
-  img_index=$((img_index + 1))
-done
-shopt -u nullglob
-IMAGE_COUNT="${img_index}"
-
+IMAGE_COUNT=0
 CONTEXT_TEXT=""
-if [[ -f "${SESSION_DIR}/context.txt" ]]; then
-  CONTEXT_TEXT="$(cat "${SESSION_DIR}/context.txt")"
+FILES_TO_ARCHIVE=()
+
+# Legacy mode: files directly under uploads/.
+if [[ "${SESSION_DIR}" == "${UPLOADS_DIR}" ]]; then
+  shopt -s nullglob
+  img_index=0
+  for img in "${UPLOADS_DIR}"/*.jpg "${UPLOADS_DIR}"/*.jpeg "${UPLOADS_DIR}"/*.png "${UPLOADS_DIR}"/*.webp; do
+    cp "${img}" "${WORK_DIR}/img_${img_index}.jpg"
+    FILES_TO_ARCHIVE+=("${img}")
+    img_index=$((img_index + 1))
+  done
+  IMAGE_COUNT="${img_index}"
+
+  for txt in "${UPLOADS_DIR}"/*.txt; do
+    CONTEXT_TEXT+="$(cat "${txt}")"$'\n'
+    FILES_TO_ARCHIVE+=("${txt}")
+  done
+  shopt -u nullglob
+
+  FILES_TO_ARCHIVE+=("${ABS_AUDIO_PATH}")
+else
+  # Session-folder mode: keep compatibility with uploads/<session_id>/ layout.
+  img_index=0
+  shopt -s nullglob
+  for img in "${SESSION_DIR}"/*.jpg "${SESSION_DIR}"/*.jpeg "${SESSION_DIR}"/*.png "${SESSION_DIR}"/*.webp; do
+    cp "${img}" "${WORK_DIR}/img_${img_index}.jpg"
+    img_index=$((img_index + 1))
+  done
+  shopt -u nullglob
+  IMAGE_COUNT="${img_index}"
+
+  if [[ -f "${SESSION_DIR}/context.txt" ]]; then
+    CONTEXT_TEXT="$(cat "${SESSION_DIR}/context.txt")"
+  fi
 fi
 
 RESULT_JSON=$(AUDIO_FILE="${AUDIO_FILE}" \
@@ -82,11 +106,19 @@ mkdir -p "${ROOT_DIR}/${TARGET_ROOT}"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 TARGET_DIR="${ROOT_DIR}/${TARGET_ROOT}/${SESSION_NAME}-${TS}"
 
-if [[ -e "${TARGET_DIR}" ]]; then
-  TARGET_DIR="${TARGET_DIR}-$$"
+if [[ "${SESSION_DIR}" == "${UPLOADS_DIR}" ]]; then
+  for src in "${FILES_TO_ARCHIVE[@]}"; do
+    [[ -f "${src}" ]] || continue
+    base="$(basename "${src}")"
+    dest="${ROOT_DIR}/${TARGET_ROOT}/${TS}-${base}"
+    mv "${src}" "${dest}"
+  done
+else
+  if [[ -e "${TARGET_DIR}" ]]; then
+    TARGET_DIR="${TARGET_DIR}-$$"
+  fi
+  mv "${SESSION_DIR}" "${TARGET_DIR}"
 fi
-
-mv "${SESSION_DIR}" "${TARGET_DIR}"
 
 echo "Session '${SESSION_NAME}' -> ${TARGET_ROOT}"
 if [[ "${STATUS}" == "completed" ]]; then

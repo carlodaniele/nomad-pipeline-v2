@@ -4,8 +4,8 @@ Adapter-first, CMS-agnostic pipeline using a strict legacy-style runtime flow: o
 
 ## How it works
 
-1. Files are staged into `uploads/<session_id>/` (images and optional `context.txt`).
-2. When `audio.<ext>` is added in that session folder, the workflow starts automatically.
+1. Files are staged directly into `uploads/` (images and optional `.txt` context files).
+2. When `uploads/audio.<ext>` is pushed (`.oga`, `.mp3`, `.m4a`), the workflow starts automatically.
 3. The workflow runs the selected adapter (WordPress by default): upload images, upload audio, build Ability input JSON, call Ability.
 4. Session files are moved from `uploads/` to `processed/` (or `failed/` if an error occurs), then the job ends.
 
@@ -40,7 +40,7 @@ bash scripts/pipeline/dry-run.sh
 
 ## Legacy-Style Ingest Mode (Single Runtime Workflow)
 
-This mode uses one runtime workflow only. Processing starts only when an audio file is pushed under `uploads/**` on branch `ingest`.
+This mode uses one runtime workflow only. Processing starts only when an audio file is pushed in `uploads/` on branch `ingest`.
 
 ### 1 - Create and push ingest branch
 
@@ -64,12 +64,12 @@ Required for adapter execution:
 
 ### 3 - Stage session files
 
-Create a session folder in `uploads/` and push images/text first, audio last.
+Push images/text in `uploads/` first, then push the audio file in `uploads/`.
 
 ### 4 - Trigger behavior
 
 - Images/text only: no processing run.
-- Audio pushed under `uploads/<session_id>/audio.<ext>`: processing starts automatically.
+- Audio pushed under `uploads/*.oga|*.mp3|*.m4a`: processing starts automatically.
 - Success: session moved to `processed/`.
 - Failure: session moved to `failed/`.
 
@@ -139,7 +139,7 @@ The pipeline only processes messages from chat IDs you explicitly authorize. To 
 
 ### 4 — Trigger source
 
-The workflow trigger is the Git push that introduces `uploads/**/audio.<ext>` on branch `ingest`.
+The workflow trigger is the Git push that introduces `uploads/*.oga`, `uploads/*.mp3`, or `uploads/*.m4a` on branch `ingest`.
 
 ---
 
@@ -211,22 +211,22 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
 
 ### 8 — Runtime workflow
 
-`Ingest Audio Pipeline` starts automatically on audio file push under `uploads/**` on branch `ingest`.
+`Nomad Pipeline Execution` starts automatically on audio file push under `uploads/*` on branch `ingest`.
 
 ---
 
 ### Session flow reference
 
-Each session is represented by one folder under `uploads/`.
+The workflow reads files from `uploads/` root.
 
 ```
-stage image(s) + optional context.txt in uploads/<session_id>/
-stage audio as uploads/<session_id>/audio.<ext>
+stage image(s) + optional .txt context in uploads/
+stage audio as uploads/audio.<ext>
               push of audio file triggers Ingest Audio Pipeline
                  → images uploaded to WordPress media library
                  → audio uploaded to WordPress media library
                  → ability called with structured JSON input
-              session moved to processed/ or failed/
+              processed files moved to processed/ or failed/
 ```
 
 ---

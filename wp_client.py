@@ -28,10 +28,10 @@ def upload_audio_to_wordpress(filepath: str) -> int:
         "Content-Type": mime_type,
     }
 
-    if not WP_USERNAME or not WP_APPLICATION_PASSWORD:
-        raise ValueError("WP_USERNAME o WP_APPLICATION_PASSWORD non configurati nelle variabili d'ambiente.")
+    if not WP_USERNAME or not WP_APP_PASSWORD:
+        raise ValueError("WP_USERNAME o WP_APP_PASSWORD non configurati nelle variabili d'ambiente.")
 
-    auth = HTTPBasicAuth(WP_USERNAME, WP_APPLICATION_PASSWORD)
+    auth = HTTPBasicAuth(WP_USERNAME, WP_APP_PASSWORD)
 
     print(f"[Pipeline] Uploading audio file '{filename}' ({mime_type}) to WordPress Media Library...")
     with open(filepath, "rb") as audio_file:
@@ -62,7 +62,7 @@ def run_pipeline() -> Dict[str, Any]:
     media_id = upload_audio_to_wordpress(audio_path)
     payload = build_payload_with_media_id(media_id)
 
-    auth = HTTPBasicAuth(WP_USERNAME, WP_APPLICATION_PASSWORD) if WP_USERNAME and WP_APPLICATION_PASSWORD else None
+    auth = HTTPBasicAuth(WP_USERNAME, WP_APP_PASSWORD) if WP_USERNAME and WP_APP_PASSWORD else None
 
     print(f"[Pipeline] Sending POST request to Ability endpoint...")
     response = requests.post(

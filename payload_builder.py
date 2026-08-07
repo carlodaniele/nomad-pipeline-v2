@@ -13,8 +13,6 @@ class AbilityInputParams(BaseModel):
     external_run_id: str
     source: str = "api"
     audio: AudioInputMediaId
-    status: str = "draft"
-    adapter: str = "wordpress"
 
 class AbilityRequestPayload(BaseModel):
     input: AbilityInputParams
@@ -36,9 +34,6 @@ def get_audio_filepath(input_folder: str) -> Optional[str]:
     return None
 
 def build_payload_with_media_id(media_id: int) -> Dict[str, Any]:
-    post_status = os.getenv("WP_POST_STATUS", "draft")
-    adapter_name = os.getenv("NOMAD_PIPELINE_ADAPTER", "wordpress")
-
     gh_run_id = os.getenv("GITHUB_RUN_ID")
     gh_run_attempt = os.getenv("GITHUB_RUN_ATTEMPT", "1")
     if gh_run_id:
@@ -50,14 +45,12 @@ def build_payload_with_media_id(media_id: int) -> Dict[str, Any]:
         contract_version="1.0.0",
         external_run_id=external_run_id,
         source="api",
-        audio=AudioInputMediaId(media_id=media_id),
-        status=post_status,
-        adapter=adapter_name
+        audio=AudioInputMediaId(media_id=media_id)
     )
 
     payload = AbilityRequestPayload(input=params)
     return payload.model_dump(exclude_none=True)
 
 if __name__ == "__main__":
-    dummy_payload = build_payload_with_media_id(330)
+    dummy_payload = build_payload_with_media_id(332)
     print(json.dumps(dummy_payload, indent=2))

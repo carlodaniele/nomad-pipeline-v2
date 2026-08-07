@@ -2,9 +2,10 @@ import os
 import json
 import base64
 import mimetypes
+import uuid
 from typing import List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 class MediaFile(BaseModel):
     filename: str
@@ -13,6 +14,7 @@ class MediaFile(BaseModel):
 
 class AbilityInputParams(BaseModel):
     contract_version: str = "1"
+    external_run_id: str
     title: str
     status: str
     adapter: str
@@ -30,6 +32,14 @@ def build_payload() -> Dict[str, Any]:
     input_folder = os.getenv("GH_INPUT_FOLDER", "media-input")
     post_status = os.getenv("WP_POST_STATUS", "draft")
     adapter_name = os.getenv("NOMAD_PIPELINE_ADAPTER", "wordpress")
+
+    # Recupera l'ID run di GitHub o ne genera uno univoco di fallback
+    gh_run_id = os.getenv("GITHUB_RUN_ID")
+    gh_run_attempt = os.getenv("GITHUB_RUN_ATTEMPT", "1")
+    if gh_run_id:
+        external_run_id = f"gh-{gh_run_id}-{gh_run_attempt}"
+    else:
+        external_run_id = f"local-{uuid.uuid4().hex[:12]}"
 
     audio_files: List[MediaFile] = []
     image_files: List[MediaFile] = []
@@ -57,6 +67,7 @@ def build_payload() -> Dict[str, Any]:
 
     params = AbilityInputParams(
         contract_version="1",
+        external_run_id=external_run_id,
         title=f"Nomad Post - {datetime.now().strftime('%Y-%m-%d')}",
         status=post_status,
         adapter=adapter_name,

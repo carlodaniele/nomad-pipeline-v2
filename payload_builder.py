@@ -4,7 +4,7 @@ import base64
 import mimetypes
 from typing import List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class MediaFile(BaseModel):
     filename: str
@@ -12,6 +12,7 @@ class MediaFile(BaseModel):
     content_b64: str
 
 class AbilityInputParams(BaseModel):
+    contract_version: str = "1"
     title: str
     status: str
     adapter: str
@@ -55,6 +56,7 @@ def build_payload() -> Dict[str, Any]:
                 image_files.append(media_obj)
 
     params = AbilityInputParams(
+        contract_version="1",
         title=f"Nomad Post - {datetime.now().strftime('%Y-%m-%d')}",
         status=post_status,
         adapter=adapter_name,

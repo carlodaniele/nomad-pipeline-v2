@@ -3,7 +3,7 @@ import json
 import base64
 import mimetypes
 import uuid
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -13,7 +13,7 @@ class MediaFile(BaseModel):
     content_b64: str
 
 class AbilityInputParams(BaseModel):
-    contract_version: str = "1"
+    contract_version: str = "1.0.0"
     external_run_id: str
     source: str = "nomad-pipeline-v2"
     title: str
@@ -66,7 +66,7 @@ def build_payload() -> Dict[str, Any]:
                 image_files.append(media_obj)
 
     params = AbilityInputParams(
-        contract_version="1",
+        contract_version="1.0.0",
         external_run_id=external_run_id,
         source="nomad-pipeline-v2",
         title=f"Nomad Post - {datetime.now().strftime('%Y-%m-%d')}",

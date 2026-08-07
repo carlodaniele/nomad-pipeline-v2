@@ -15,6 +15,7 @@ class MediaFile(BaseModel):
 class AbilityInputParams(BaseModel):
     contract_version: str = "1"
     external_run_id: str
+    source: str = "nomad-pipeline-v2"
     title: str
     status: str
     adapter: str
@@ -33,7 +34,6 @@ def build_payload() -> Dict[str, Any]:
     post_status = os.getenv("WP_POST_STATUS", "draft")
     adapter_name = os.getenv("NOMAD_PIPELINE_ADAPTER", "wordpress")
 
-    # Recupera l'ID run di GitHub o ne genera uno univoco di fallback
     gh_run_id = os.getenv("GITHUB_RUN_ID")
     gh_run_attempt = os.getenv("GITHUB_RUN_ATTEMPT", "1")
     if gh_run_id:
@@ -68,6 +68,7 @@ def build_payload() -> Dict[str, Any]:
     params = AbilityInputParams(
         contract_version="1",
         external_run_id=external_run_id,
+        source="nomad-pipeline-v2",
         title=f"Nomad Post - {datetime.now().strftime('%Y-%m-%d')}",
         status=post_status,
         adapter=adapter_name,

@@ -3,19 +3,20 @@ import json
 import base64
 import mimetypes
 import uuid
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
 class MediaFile(BaseModel):
     filename: str
     mime_type: str
     content_b64: str
+    content: str
 
 class AbilityInputParams(BaseModel):
     contract_version: str = "1.0.0"
     external_run_id: str
     source: str = "api"
-    audio: List[MediaFile]
+    audio: Optional[MediaFile] = None
     images: List[MediaFile] = []
     status: str = "draft"
     adapter: str = "wordpress"
@@ -39,7 +40,7 @@ def build_payload() -> Dict[str, Any]:
     else:
         external_run_id = f"local-{uuid.uuid4().hex[:12]}"
 
-    audio_files: List[MediaFile] = []
+    audio_obj: Optional[MediaFile] = None
     image_files: List[MediaFile] = []
 
     if os.path.exists(input_folder):
@@ -52,30 +53,32 @@ def build_payload() -> Dict[str, Any]:
             mime_type = mime_type or "application/octet-stream"
             b64_data = encode_file_to_b64(filepath)
 
-            media_obj = MediaFile(
+            media_item = MediaFile(
                 filename=filename,
                 mime_type=mime_type,
-                content_b64=b64_data
+                content_b64=b64_data,
+                content=b64_data
             )
 
-            if mime_type.startswith("audio/"):
-                audio_files.append(media_obj)
+            if mime_type.startswith("audio/") and audio_obj is None:
+                audio_obj = media_item
             elif mime_type.startswith("image/"):
-                image_files.append(media_obj)
+                image_files.append(media_item)
 
     params = AbilityInputParams(
         contract_version="1.0.0",
         external_run_id=external_run_id,
         source="api",
-        audio=audio_files,
+        audio=audio_obj,
         images=image_files,
         status=post_status,
         adapter=adapter_name
     )
 
     payload = AbilityRequestPayload(input=params)
-
-    return payload.model_dump()
+    
+    # Rimuove valori None dal dizionario generato
+    return payload.model_dump(exclude_none=True)
 
 if __name__ == "__main__":
     data = build_payload()

@@ -1,0 +1,56 @@
+name: Nomad Pipeline v2 Execution
+
+on:
+  push:
+    paths:
+      - 'media-input/**'
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Execute Pipeline
+        env:
+          WP_URL: ${{ vars.WP_URL }}
+          NOMAD_PIPELINE_WP_ABILITY_ENDPOINT: ${{ vars.NOMAD_PIPELINE_WP_ABILITY_ENDPOINT }}
+          NOMAD_PIPELINE_ADAPTER: ${{ vars.NOMAD_PIPELINE_ADAPTER }}
+          WP_POST_STATUS: ${{ vars.WP_POST_STATUS }}
+          GH_INPUT_FOLDER: ${{ vars.GH_INPUT_FOLDER }}
+          TELEGRAM_ALLOWED_CHAT_IDS: ${{ vars.TELEGRAM_ALLOWED_CHAT_IDS }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          python wp_client.py
+
+      - name: Cleanup Input Folder
+        if: success()
+        run: |
+          echo "Svuotamento cartella media-input..."
+          rm -rf media-input/*
+          touch media-input/.gitkeep
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add media-input/
+          git diff --staged --quiet || git commit -m "chore: cleanup media-input after successful processing"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}

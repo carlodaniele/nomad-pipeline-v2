@@ -1,0 +1,71 @@
+import os
+import json
+import base64
+import mimetypes
+from typing import List, Dict, Any
+from datetime import datetime
+from pydantic import BaseModel
+
+class MediaFile(BaseModel):
+    filename: str
+    mime_type: str
+    content_b64: str
+
+class AbilityInputParams(BaseModel):
+    title: str
+    status: str
+    adapter: str
+    audio_files: List[MediaFile]
+    image_files: List[MediaFile]
+
+class AbilityRequestPayload(BaseModel):
+    input: AbilityInputParams
+
+def encode_file_to_b64(filepath: str) -> str:
+    with open(filepath, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
+
+def build_payload() -> Dict[str, Any]:
+    input_folder = os.getenv("GH_INPUT_FOLDER", "media-input")
+    post_status = os.getenv("WP_POST_STATUS", "draft")
+    adapter_name = os.getenv("NOMAD_PIPELINE_ADAPTER", "wordpress")
+
+    audio_files: List[MediaFile] = []
+    image_files: List[MediaFile] = []
+
+    if os.path.exists(input_folder):
+        for filename in sorted(os.listdir(input_folder)):
+            filepath = os.path.join(input_folder, filename)
+            if not os.path.isfile(filepath) or filename.startswith("."):
+                continue
+
+            mime_type, _ = mimetypes.guess_type(filepath)
+            mime_type = mime_type or "application/octet-stream"
+            b64_data = encode_file_to_b64(filepath)
+
+            media_obj = MediaFile(
+                filename=filename,
+                mime_type=mime_type,
+                content_b64=b64_data
+            )
+
+            if mime_type.startswith("audio/"):
+                audio_files.append(media_obj)
+            elif mime_type.startswith("image/"):
+                image_files.append(media_obj)
+
+    params = AbilityInputParams(
+        title=f"Nomad Post - {datetime.now().strftime('%Y-%m-%d')}",
+        status=post_status,
+        adapter=adapter_name,
+        audio_files=audio_files,
+        image_files=image_files
+    )
+
+    payload = AbilityRequestPayload(input=params)
+
+    return payload.model_dump()
+
+if __name__ == "__main__":
+    data = build_payload()
+    print(json.dumps(data, indent=2))

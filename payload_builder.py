@@ -4,7 +4,6 @@ import base64
 import mimetypes
 import uuid
 from typing import List, Dict, Any
-from datetime import datetime
 from pydantic import BaseModel
 
 class MediaFile(BaseModel):
@@ -16,11 +15,10 @@ class AbilityInputParams(BaseModel):
     contract_version: str = "1.0.0"
     external_run_id: str
     source: str = "api"
-    title: str
-    status: str
-    adapter: str
     audio: List[MediaFile]
-    images: List[MediaFile]
+    images: List[MediaFile] = []
+    status: str = "draft"
+    adapter: str = "wordpress"
 
 class AbilityRequestPayload(BaseModel):
     input: AbilityInputParams
@@ -69,11 +67,10 @@ def build_payload() -> Dict[str, Any]:
         contract_version="1.0.0",
         external_run_id=external_run_id,
         source="api",
-        title=f"Nomad Post - {datetime.now().strftime('%Y-%m-%d')}",
-        status=post_status,
-        adapter=adapter_name,
         audio=audio_files,
-        images=image_files
+        images=image_files,
+        status=post_status,
+        adapter=adapter_name
     )
 
     payload = AbilityRequestPayload(input=params)

@@ -15,7 +15,7 @@ class MediaFile(BaseModel):
 class AbilityInputParams(BaseModel):
     contract_version: str = "1.0.0"
     external_run_id: str
-    source: str = "nomad-pipeline-v2"
+    source: str = "api"
     title: str
     status: str
     adapter: str
@@ -68,7 +68,7 @@ def build_payload() -> Dict[str, Any]:
     params = AbilityInputParams(
         contract_version="1.0.0",
         external_run_id=external_run_id,
-        source="nomad-pipeline-v2",
+        source="api",
         title=f"Nomad Post - {datetime.now().strftime('%Y-%m-%d')}",
         status=post_status,
         adapter=adapter_name,

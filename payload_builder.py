@@ -3,7 +3,7 @@ import json
 import base64
 import mimetypes
 import uuid
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -19,8 +19,8 @@ class AbilityInputParams(BaseModel):
     title: str
     status: str
     adapter: str
-    audio_files: List[MediaFile]
-    image_files: List[MediaFile]
+    audio: List[MediaFile]
+    images: List[MediaFile]
 
 class AbilityRequestPayload(BaseModel):
     input: AbilityInputParams
@@ -72,8 +72,8 @@ def build_payload() -> Dict[str, Any]:
         title=f"Nomad Post - {datetime.now().strftime('%Y-%m-%d')}",
         status=post_status,
         adapter=adapter_name,
-        audio_files=audio_files,
-        image_files=image_files
+        audio=audio_files,
+        images=image_files
     )
 
     payload = AbilityRequestPayload(input=params)

@@ -4,20 +4,22 @@ import base64
 import mimetypes
 import uuid
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-class MediaFile(BaseModel):
+class AudioInputMediaId(BaseModel):
+    media_id: int
+
+class ImageInput(BaseModel):
     filename: str
     mime_type: str
-    content_b64: str
-    content: str
+    base64: str
 
 class AbilityInputParams(BaseModel):
     contract_version: str = "1.0.0"
     external_run_id: str
     source: str = "api"
-    audio: Optional[MediaFile] = None
-    images: List[MediaFile] = []
+    audio: AudioInputMediaId
+    images: List[ImageInput] = Field(default_factory=list)
     status: str = "draft"
     adapter: str = "wordpress"
 
@@ -28,7 +30,23 @@ def encode_file_to_b64(filepath: str) -> str:
     with open(filepath, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
 
-def build_payload() -> Dict[str, Any]:
+def get_audio_filepath(input_folder: str) -> Optional[str]:
+    if not os.path.exists(input_folder):
+        return None
+
+    for filename in sorted(os.listdir(input_folder)):
+        filepath = os.path.join(input_folder, filename)
+        if not os.path.isfile(filepath) or filename.startswith("."):
+            continue
+
+        mime_type, _ = mimetypes.guess_type(filepath)
+        mime_type = mime_type or ""
+        if mime_type.startswith("audio/") or filename.lower().endswith((".mp3", ".m4a", ".wav", ".ogg")):
+            return filepath
+
+    return None
+
+def build_payload_with_media_id(media_id: int) -> Dict[str, Any]:
     input_folder = os.getenv("GH_INPUT_FOLDER", "media-input")
     post_status = os.getenv("WP_POST_STATUS", "draft")
     adapter_name = os.getenv("NOMAD_PIPELINE_ADAPTER", "wordpress")
@@ -40,8 +58,7 @@ def build_payload() -> Dict[str, Any]:
     else:
         external_run_id = f"local-{uuid.uuid4().hex[:12]}"
 
-    audio_obj: Optional[MediaFile] = None
-    image_files: List[MediaFile] = []
+    image_files: List[ImageInput] = []
 
     if os.path.exists(input_folder):
         for filename in sorted(os.listdir(input_folder)):
@@ -51,35 +68,30 @@ def build_payload() -> Dict[str, Any]:
 
             mime_type, _ = mimetypes.guess_type(filepath)
             mime_type = mime_type or "application/octet-stream"
-            b64_data = encode_file_to_b64(filepath)
 
-            media_item = MediaFile(
-                filename=filename,
-                mime_type=mime_type,
-                content_b64=b64_data,
-                content=b64_data
-            )
-
-            if mime_type.startswith("audio/") and audio_obj is None:
-                audio_obj = media_item
-            elif mime_type.startswith("image/"):
-                image_files.append(media_item)
+            if mime_type.startswith("image/"):
+                b64_data = encode_file_to_b64(filepath)
+                image_files.append(
+                    ImageInput(
+                        filename=filename,
+                        mime_type=mime_type,
+                        base64=b64_data
+                    )
+                )
 
     params = AbilityInputParams(
         contract_version="1.0.0",
         external_run_id=external_run_id,
         source="api",
-        audio=audio_obj,
+        audio=AudioInputMediaId(media_id=media_id),
         images=image_files,
         status=post_status,
         adapter=adapter_name
     )
 
     payload = AbilityRequestPayload(input=params)
-    
-    # Rimuove valori None dal dizionario generato
     return payload.model_dump(exclude_none=True)
 
 if __name__ == "__main__":
-    data = build_payload()
-    print(json.dumps(data, indent=2))
+    dummy_payload = build_payload_with_media_id(1234)
+    print(json.dumps(dummy_payload, indent=2))

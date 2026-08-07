@@ -1,6 +1,8 @@
 import os
+import mimetypes
 import requests
-from typing import Dict, Any, Optional
+from requests.auth import HTTPBasicAuth
+from typing import Dict, Any
 from payload_builder import build_payload_with_media_id, get_audio_filepath
 
 WP_BASE_URL = os.getenv("WP_BASE_URL", "https://audioconverter.kinsta.cloud")
@@ -12,14 +14,26 @@ MEDIA_ENDPOINT = f"{WP_BASE_URL}/wp-json/wp/v2/media"
 
 def upload_audio_to_wordpress(filepath: str) -> int:
     filename = os.path.basename(filepath)
+    
+    # Rilevamento dinamico del Content-Type (gestisce .oga, .mp3, .m4a, ecc.)
+    mime_type, _ = mimetypes.guess_type(filepath)
+    if not mime_type:
+        if filename.lower().endswith('.oga'):
+            mime_type = 'audio/ogg'
+        else:
+            mime_type = 'application/octet-stream'
+
     headers = {
         "Content-Disposition": f'attachment; filename="{filename}"',
-        "Content-Type": "audio/mpeg",
+        "Content-Type": mime_type,
     }
 
-    auth = (WP_USERNAME, WP_APPLICATION_PASSWORD) if WP_USERNAME and WP_APPLICATION_PASSWORD else None
+    if not WP_USERNAME or not WP_APPLICATION_PASSWORD:
+        raise ValueError("WP_USERNAME o WP_APPLICATION_PASSWORD non configurati nelle variabili d'ambiente.")
 
-    print(f"[Pipeline] Uploading audio file '{filename}' to WordPress Media Library...")
+    auth = HTTPBasicAuth(WP_USERNAME, WP_APPLICATION_PASSWORD)
+
+    print(f"[Pipeline] Uploading audio file '{filename}' ({mime_type}) to WordPress Media Library...")
     with open(filepath, "rb") as audio_file:
         response = requests.post(
             MEDIA_ENDPOINT,
@@ -28,6 +42,9 @@ def upload_audio_to_wordpress(filepath: str) -> int:
             auth=auth,
             timeout=120
         )
+
+    if response.status_code != 201 and response.status_code != 200:
+        print(f"[Pipeline] Upload Failed. Response Body: {response.text}")
 
     response.raise_for_status()
     media_data = response.json()
@@ -45,8 +62,8 @@ def run_pipeline() -> Dict[str, Any]:
     media_id = upload_audio_to_wordpress(audio_path)
     payload = build_payload_with_media_id(media_id)
 
-    auth = (WP_USERNAME, WP_APPLICATION_PASSWORD) if WP_USERNAME and WP_APPLICATION_PASSWORD else None
-    
+    auth = HTTPBasicAuth(WP_USERNAME, WP_APPLICATION_PASSWORD) if WP_USERNAME and WP_APPLICATION_PASSWORD else None
+
     print(f"[Pipeline] Sending POST request to Ability endpoint...")
     response = requests.post(
         ABILITY_ENDPOINT,
@@ -55,6 +72,9 @@ def run_pipeline() -> Dict[str, Any]:
         headers={"Content-Type": "application/json"},
         timeout=180
     )
+
+    if not response.ok:
+        print(f"[Pipeline] Ability Failed. Response Body: {response.text}")
 
     response.raise_for_status()
     print("[Pipeline] Ability executed successfully.")

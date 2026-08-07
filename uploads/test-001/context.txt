@@ -1,1 +1,0 @@
-Contesto test end-to-end legacy mode

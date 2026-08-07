@@ -6,7 +6,7 @@ from typing import Dict, Any
 from payload_builder import build_payload_with_media_id, get_audio_filepath
 
 WP_BASE_URL = os.getenv("WP_BASE_URL", "https://audioconverter.kinsta.cloud")
-WP_APPLICATION_PASSWORD = os.getenv("WP_APPLICATION_PASSWORD", "")
+WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "")
 WP_USERNAME = os.getenv("WP_USERNAME", "")
 
 ABILITY_ENDPOINT = f"{WP_BASE_URL}/wp-json/wp-abilities/v1/abilities/nomad-pipeline-audio-to-draft/audio-to-post/run"

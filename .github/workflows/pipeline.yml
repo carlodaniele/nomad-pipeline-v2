@@ -34,7 +34,29 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Check Audio Presence
+        id: audio_check
+        run: |
+          shopt -s nullglob
+          files=(
+            media-input/*.oga
+            media-input/*.ogg
+            media-input/*.mp3
+            media-input/*.m4a
+            media-input/*.wav
+            media-input/*.webm
+          )
+
+          if [ ${#files[@]} -gt 0 ]; then
+            echo "has_audio=true" >> "$GITHUB_OUTPUT"
+            echo "Audio trovato: ${files[0]}"
+          else
+            echo "has_audio=false" >> "$GITHUB_OUTPUT"
+            echo "Nessun audio in media-input: skip esecuzione pipeline."
+          fi
+
       - name: Execute Pipeline
+        if: steps.audio_check.outputs.has_audio == 'true'
         env:
           WP_URL: ${{ vars.WP_URL }}
           WP_ABILITY_URL: ${{ vars.WP_ABILITY_URL }}
@@ -51,7 +73,7 @@ jobs:
           python wp_client.py
 
       - name: Cleanup Input Folder
-        if: success()
+        if: success() && steps.audio_check.outputs.has_audio == 'true'
         run: |
           echo "Svuotamento cartella media-input..."
           rm -rf media-input/*

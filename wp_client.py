@@ -30,11 +30,39 @@ def _normalize_endpoint(base_url: str, endpoint: str) -> str:
     return urljoin(f"{base_url}/", raw.lstrip("/"))
 
 
+def _resolve_wp_credentials() -> tuple[str, str]:
+    username = (os.getenv("WP_USERNAME", "") or "").strip()
+    app_password = (os.getenv("WP_APP_PASSWORD", "") or "")
+
+    # Backward compatibility with legacy combined auth env var.
+    combined = (os.getenv("WP_ABILITY_AUTH", "") or "").strip()
+    if (not username or not app_password) and combined:
+        if ":" in combined:
+            user_part, pass_part = combined.split(":", 1)
+        elif "|" in combined:
+            user_part, pass_part = combined.split("|", 1)
+        else:
+            raise ValueError(
+                "WP_ABILITY_AUTH non valido: usa formato 'username:application_password'."
+            )
+        username = username or user_part.strip()
+        app_password = app_password or pass_part
+
+    if not username or not app_password:
+        raise ValueError(
+            "Credenziali WP mancanti: configura WP_USERNAME+WP_APP_PASSWORD oppure WP_ABILITY_AUTH."
+        )
+
+    return username, app_password
+
+
 WP_URL = _normalize_base_url(
-    os.getenv("WP_URL") or os.getenv("WP_BASE_URL") or "https://audioconverter.kinsta.cloud"
+    os.getenv("WP_URL")
+    or os.getenv("WP_BASE_URL")
+    or os.getenv("WP_ABILITY_URL")
+    or "https://audioconverter.kinsta.cloud"
 )
-WP_USERNAME = os.getenv("WP_USERNAME", "")
-WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "")
+WP_USERNAME, WP_APP_PASSWORD = _resolve_wp_credentials()
 
 ABILITY_ENDPOINT = _normalize_endpoint(
     WP_URL,

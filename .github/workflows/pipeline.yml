@@ -32,6 +32,7 @@ jobs:
       - name: Execute Pipeline
         env:
           WP_URL: ${{ vars.WP_URL }}
+          WP_ABILITY_URL: ${{ vars.WP_ABILITY_URL }}
           NOMAD_PIPELINE_WP_ABILITY_ENDPOINT: ${{ vars.NOMAD_PIPELINE_WP_ABILITY_ENDPOINT }}
           NOMAD_PIPELINE_ADAPTER: ${{ vars.NOMAD_PIPELINE_ADAPTER }}
           WP_POST_STATUS: ${{ vars.WP_POST_STATUS }}
@@ -39,6 +40,7 @@ jobs:
           TELEGRAM_ALLOWED_CHAT_IDS: ${{ vars.TELEGRAM_ALLOWED_CHAT_IDS }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          WP_ABILITY_AUTH: ${{ secrets.WP_ABILITY_AUTH }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           python wp_client.py

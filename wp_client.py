@@ -1,17 +1,47 @@
 import os
 import mimetypes
 import requests
+from urllib.parse import urljoin, urlparse
 from requests.auth import HTTPBasicAuth
 from typing import Dict, Any, List, Optional
 from payload_builder import build_payload_with_media_id, get_audio_filepath
 
-WP_URL = os.getenv("WP_URL", "https://audioconverter.kinsta.cloud")
+def _normalize_base_url(value: str) -> str:
+    base = (value or "").strip()
+    if not base:
+        raise ValueError("WP_URL/WP_BASE_URL non configurata nelle variabili d'ambiente.")
+
+    parsed = urlparse(base)
+    if not parsed.scheme:
+        base = f"https://{base.lstrip('/')}"
+
+    return base.rstrip("/")
+
+
+def _normalize_endpoint(base_url: str, endpoint: str) -> str:
+    raw = (endpoint or "").strip()
+    if not raw:
+        raise ValueError("NOMAD_PIPELINE_WP_ABILITY_ENDPOINT non configurato.")
+
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc:
+        return raw
+
+    return urljoin(f"{base_url}/", raw.lstrip("/"))
+
+
+WP_URL = _normalize_base_url(
+    os.getenv("WP_URL") or os.getenv("WP_BASE_URL") or "https://audioconverter.kinsta.cloud"
+)
 WP_USERNAME = os.getenv("WP_USERNAME", "")
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "")
 
-ABILITY_ENDPOINT = os.getenv(
-    "NOMAD_PIPELINE_WP_ABILITY_ENDPOINT",
-    f"{WP_URL}/wp-json/wp-abilities/v1/abilities/nomad-pipeline-audio-to-draft/audio-to-post/run"
+ABILITY_ENDPOINT = _normalize_endpoint(
+    WP_URL,
+    os.getenv(
+        "NOMAD_PIPELINE_WP_ABILITY_ENDPOINT",
+        "/wp-json/wp-abilities/v1/abilities/nomad-pipeline-audio-to-draft/audio-to-post/run",
+    ),
 )
 MEDIA_ENDPOINT = f"{WP_URL}/wp-json/wp/v2/media"
 POSTS_ENDPOINT = f"{WP_URL}/wp-json/wp/v2/posts"

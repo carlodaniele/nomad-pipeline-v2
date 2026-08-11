@@ -74,7 +74,7 @@ ABILITY_ENDPOINT = _normalize_endpoint(
 MEDIA_ENDPOINT = f"{WP_URL}/wp-json/wp/v2/media"
 POSTS_ENDPOINT = f"{WP_URL}/wp-json/wp/v2/posts"
 
-def upload_file_to_wordpress(filepath: str) -> int:
+def upload_file_to_wordpress(filepath: str) -> Dict[str, Any]:
     filename = os.path.basename(filepath)
     mime_type, _ = mimetypes.guess_type(filepath)
     
@@ -110,8 +110,9 @@ def upload_file_to_wordpress(filepath: str) -> int:
     response.raise_for_status()
     media_data = response.json()
     media_id = media_data.get("id")
+    media_url = media_data.get("source_url")
     print(f"[Pipeline] File uploaded successfully. Media ID: {media_id}")
-    return media_id
+    return {"id": media_id, "url": media_url}
 
 def get_image_filepaths(input_folder: str) -> List[str]:
     images = []
@@ -145,6 +146,67 @@ def set_featured_image(post_id: int, media_id: int) -> None:
     if response.ok:
         print(f"[Pipeline] Set Media {media_id} as featured image for Post {post_id}.")
 
+def build_media_blocks(images: List[Dict[str, Any]]) -> str:
+    """
+    Genera il markup dei blocchi Gutenberg (wp:image singolo o wp:gallery)
+    a partire da id/url delle immagini gia' caricate. Questo e' puro markup
+    locale: gli id delle immagini non vengono mai inviati all'Ability.
+    """
+    images = [img for img in images if img.get("id") and img.get("url")]
+    if not images:
+        return ""
+
+    if len(images) == 1:
+        img = images[0]
+        return (
+            f'\n\n<!-- wp:image {{"id":{img["id"]},"sizeSlug":"large","linkDestination":"none"}} -->\n'
+            f'<figure class="wp-block-image size-large">'
+            f'<img src="{img["url"]}" class="wp-image-{img["id"]}"/></figure>\n'
+            f'<!-- /wp:image -->\n'
+        )
+
+    blocks = '\n\n<!-- wp:gallery {"linkTo":"none"} -->\n'
+    blocks += '<figure class="wp-block-gallery has-nested-images columns-default is-cropped">\n'
+    for img in images:
+        blocks += (
+            f'<!-- wp:image {{"id":{img["id"]},"sizeSlug":"large","linkDestination":"none"}} -->\n'
+            f'<figure class="wp-block-image size-large">'
+            f'<img src="{img["url"]}" class="wp-image-{img["id"]}"/></figure>\n'
+            f'<!-- /wp:image -->\n'
+        )
+    blocks += '</figure>\n<!-- /wp:gallery -->\n'
+    return blocks
+
+def get_post_raw_content(post_id: int) -> str:
+    auth = HTTPBasicAuth(WP_USERNAME, WP_APP_PASSWORD)
+    url = f"{POSTS_ENDPOINT}/{post_id}"
+    # context=edit e' necessario per ricevere content.raw invece del solo rendered.
+    response = requests.get(url, params={"context": "edit"}, auth=auth, timeout=60)
+    response.raise_for_status()
+    content = response.json().get("content", {})
+    if isinstance(content, dict):
+        return content.get("raw") or content.get("rendered") or ""
+    return content or ""
+
+def append_media_blocks_to_post(post_id: int, images: List[Dict[str, Any]]) -> None:
+    blocks = build_media_blocks(images)
+    if not blocks:
+        return
+
+    current_content = get_post_raw_content(post_id)
+    auth = HTTPBasicAuth(WP_USERNAME, WP_APP_PASSWORD)
+    url = f"{POSTS_ENDPOINT}/{post_id}"
+    response = requests.post(
+        url,
+        json={"content": current_content + blocks},
+        auth=auth,
+        timeout=60
+    )
+    if response.ok:
+        print(f"[Pipeline] Blocchi immagine/galleria aggiunti al post {post_id}.")
+    else:
+        print(f"[Pipeline] Errore aggiunta blocchi immagine: {response.status_code} {response.text}")
+
 def run_pipeline() -> Dict[str, Any]:
     input_folder = os.getenv("GH_INPUT_FOLDER", "media-input")
     
@@ -155,16 +217,17 @@ def run_pipeline() -> Dict[str, Any]:
     image_paths = get_image_filepaths(input_folder)
 
     # 1. Upload audio
-    audio_media_id = upload_file_to_wordpress(audio_path)
+    audio_media = upload_file_to_wordpress(audio_path)
+    audio_media_id = audio_media["id"]
 
-    # 2. Upload preventive delle immagini
-    uploaded_image_ids = []
+    # 2. Upload preventivo delle immagini (id + url, servono solo per generare i blocchi)
+    uploaded_images = []
     for img_path in image_paths:
-        img_id = upload_file_to_wordpress(img_path)
-        uploaded_image_ids.append(img_id)
+        uploaded_images.append(upload_file_to_wordpress(img_path))
 
-    # 3. Esecuzione Ability per generare la bozza del post
-    payload = build_payload_with_media_id(audio_media_id, uploaded_image_ids)
+    # 3. Esecuzione Ability per generare la bozza del post.
+    # Il payload contiene SOLO l'audio: l'Ability non accetta image_media_ids.
+    payload = build_payload_with_media_id(audio_media_id)
     auth = HTTPBasicAuth(WP_USERNAME, WP_APP_PASSWORD)
 
     print("[Pipeline] Sending POST request to Ability endpoint...")
@@ -194,13 +257,18 @@ def run_pipeline() -> Dict[str, Any]:
 
     post_id = result.get("post_id")
 
-    # 4. Associazione delle immagini al post e impostazione dell'immagine in evidenza
-    if post_id and uploaded_image_ids:
-        print(f"[Pipeline] Attaching {len(uploaded_image_ids)} images to post {post_id}...")
-        for idx, img_id in enumerate(uploaded_image_ids):
-            attach_image_to_post(img_id, post_id)
+    # 4. Le immagini vengono gestite interamente lato pipeline:
+    #    - associate come allegati del post
+    #    - la prima impostata come immagine in evidenza
+    #    - i blocchi wp:image / wp:gallery generati qui e aggiunti al content
+    if post_id and uploaded_images:
+        print(f"[Pipeline] Attaching {len(uploaded_images)} images to post {post_id}...")
+        for idx, img in enumerate(uploaded_images):
+            attach_image_to_post(img["id"], post_id)
             if idx == 0:
-                set_featured_image(post_id, img_id)
+                set_featured_image(post_id, img["id"])
+
+        append_media_blocks_to_post(post_id, uploaded_images)
 
     return result
 

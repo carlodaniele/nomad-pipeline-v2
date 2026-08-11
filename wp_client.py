@@ -5,13 +5,13 @@ from requests.auth import HTTPBasicAuth
 from typing import Dict, Any, List, Optional
 from payload_builder import build_payload_with_media_id, get_audio_filepath
 
-WP_BASE_URL = os.getenv("WP_BASE_URL", "https://audioconverter.kinsta.cloud")
+WP_URL = os.getenv("WP_URL", "https://audioconverter.kinsta.cloud")
 WP_USERNAME = os.getenv("WP_USERNAME", "")
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "")
 
-ABILITY_ENDPOINT = f"{WP_BASE_URL}/wp-json/wp-abilities/v1/abilities/nomad-pipeline-audio-to-draft/audio-to-post/run"
-MEDIA_ENDPOINT = f"{WP_BASE_URL}/wp-json/wp/v2/media"
-POSTS_ENDPOINT = f"{WP_BASE_URL}/wp-json/wp/v2/posts"
+ABILITY_ENDPOINT = f"{WP_URL}/wp-json/wp-abilities/v1/abilities/nomad-pipeline-audio-to-draft/audio-to-post/run"
+MEDIA_ENDPOINT = f"{WP_URL}/wp-json/wp/v2/media"
+POSTS_ENDPOINT = f"{WP_URL}/wp-json/wp/v2/posts"
 
 def upload_file_to_wordpress(filepath: str) -> int:
     filename = os.path.basename(filepath)

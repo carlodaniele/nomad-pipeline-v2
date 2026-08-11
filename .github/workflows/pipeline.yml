@@ -3,7 +3,12 @@ name: Nomad Pipeline v2 Execution
 on:
   push:
     paths:
-      - 'media-input/**'
+      - 'media-input/*.oga'
+      - 'media-input/*.ogg'
+      - 'media-input/*.mp3'
+      - 'media-input/*.m4a'
+      - 'media-input/*.wav'
+      - 'media-input/*.webm'
     branches:
       - main
   workflow_dispatch:

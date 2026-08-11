@@ -3,7 +3,7 @@ import json
 import mimetypes
 import uuid
 from typing import Dict, Any, Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 class AudioInputMediaId(BaseModel):
     media_id: int
@@ -13,7 +13,6 @@ class AbilityInputParams(BaseModel):
     external_run_id: str
     source: str = "api"
     audio: AudioInputMediaId
-    image_media_ids: List[int] = Field(default_factory=list)
 
 class AbilityRequestPayload(BaseModel):
     input: AbilityInputParams
@@ -47,12 +46,11 @@ def build_payload_with_media_id(audio_media_id: int, image_media_ids: Optional[L
         external_run_id=external_run_id,
         source="api",
         audio=AudioInputMediaId(media_id=audio_media_id),
-        image_media_ids=image_media_ids or []
     )
 
     payload = AbilityRequestPayload(input=params)
     return payload.model_dump(exclude_none=True)
 
 if __name__ == "__main__":
-    dummy_payload = build_payload_with_media_id(332, [101, 102, 103])
+    dummy_payload = build_payload_with_media_id(332)
     print(json.dumps(dummy_payload, indent=2))

@@ -1,0 +1,57 @@
+name: Telegram Ingest Polling
+
+on:
+  schedule:
+    # Ogni 5 minuti (minimo intervallo supportato da GitHub Actions).
+    # Nota: gli schedule di GitHub possono subire ritardi di qualche minuto
+    # sui repository poco attivi: non è un vero real-time.
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: telegram-ingest-poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_DISPATCH_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Poll Telegram for new files
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_CHAT_IDS: ${{ vars.TELEGRAM_ALLOWED_CHAT_IDS }}
+          GH_INPUT_FOLDER: ${{ vars.GH_INPUT_FOLDER }}
+        run: python telegram_poll.py
+
+      - name: Commit new media and offset
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${GH_INPUT_FOLDER:-media-input}/" .state/
+          git diff --staged --quiet && echo "Nessun file nuovo da committare." && exit 0
+          git commit -m "chore: ingest new Telegram media"
+          # Se nel frattempo pipeline.yml ha fatto un push (es. cleanup),
+          # riallineiamoci prima di spingere per evitare rifiuti.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push
+        env:
+          GH_INPUT_FOLDER: ${{ vars.GH_INPUT_FOLDER }}

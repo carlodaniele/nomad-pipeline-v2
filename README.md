@@ -1,77 +1,40 @@
 # Nomad Pipeline v2
 
-Adapter-first, CMS-agnostic pipeline using a strict legacy-style runtime flow: one workflow starts only when an audio file arrives in `uploads/`.
+CMS-agnostic pipeline (WordPress Ability adapter) using a single runtime workflow: processing starts only when an audio file arrives in `media-input/` on branch `main`.
 
 ## How it works
 
-1. Files are staged directly into `uploads/` (images and optional `.txt` context files).
-2. When `uploads/audio.<ext>` is pushed (`.oga`, `.mp3`, `.m4a`), the workflow starts automatically.
-3. The workflow runs the selected adapter (WordPress by default): upload images, upload audio, build Ability input JSON, call Ability.
-4. Session files are moved from `uploads/` to `processed/` (or `failed/` if an error occurs), then the job ends.
-
-## Goals
-
-- Keep orchestration logic in `core/`.
-- Keep CMS integrations in `adapters/`.
-- Enforce a shared contract in `docs/contracts/`.
-- Automate structure and contract checks in GitHub Actions.
+1. Files are staged into `media-input/` (images and one audio file per session), either manually via `git push` or automatically via the Telegram ingest workflow described below.
+2. When an audio file matching `media-input/*.oga|*.ogg|*.mp3|*.m4a|*.wav|*.webm` is pushed to `main`, the `Nomad Pipeline v2 Execution` workflow starts automatically.
+3. The workflow (`wp_client.py`): uploads the audio and any images to the WordPress Media Library, builds the Ability input JSON (`payload_builder.py`), and calls the WordPress Ability endpoint to generate the post.
+4. On success, `media-input/` is emptied (cleanup step) so the folder is ready for the next session.
 
 ## Repository structure
 
 ```
-core/                     Platform-agnostic orchestration logic
-adapters/
-  wordpress/              WordPress Ability adapter
-  astro/                  Astro publishing adapter
-docs/contracts/           Versioned JSON schemas and examples
-scripts/
-  ci/                     Local validation scripts
-  pipeline/               Pipeline execution scripts
-.github/workflows/        CI automation
+telegram_poll.py          Polls Telegram for new files and stages them into media-input/
+wp_client.py               Uploads media to WordPress and calls the Ability endpoint
+payload_builder.py         Builds the Ability request payload
+media-input/                Staging folder — temporary only, do not use as permanent storage
+.github/workflows/
+  pipeline.yml              Runs on push of an audio file to media-input/ (branch main)
+  telegram-poll.yml          Scheduled polling job that feeds media-input/ from Telegram
 ```
 
-## Quick Start
+## Getting files into `media-input/`
 
-```bash
-bash scripts/ci/validate-structure.sh
-bash scripts/ci/validate-contract.sh
-bash scripts/pipeline/dry-run.sh
-```
+There are two ways to stage a session:
 
-## Legacy-Style Ingest Mode (Single Runtime Workflow)
+- **Manual:** `git push` the image(s) first, then the audio file, directly into `media-input/` on `main`.
+- **Automatic (Telegram):** send the audio (and optional images) to your Telegram bot. The `Telegram Ingest Polling` workflow (`telegram-poll.yml`) runs every 5 minutes (or on demand via "Run workflow"), downloads any new files from authorized chats, and commits them into `media-input/`, which then triggers `pipeline.yml`.
 
-This mode uses one runtime workflow only. Processing starts only when an audio file is pushed in `uploads/` on branch `ingest`.
+  This uses Telegram's `getUpdates` polling, not a real webhook — GitHub Actions has no always-on server to receive one. If `getUpdates` starts failing with a `409 Conflict`, it means an old webhook (e.g. from the legacy v1 project) is still registered; the polling script detects and removes it automatically on each run.
 
-### 1 - Create and push ingest branch
+### Trigger behavior
 
-```bash
-git checkout -b ingest
-git push -u origin ingest
-git checkout main
-```
-
-### 2 - Add GitHub secrets
-
-Required for processing workflow:
-
-- `WP_ABILITY_URL`
-- `WP_ABILITY_AUTH`
-
-Required for adapter execution:
-
-- `WP_ABILITY_URL`
-- `WP_ABILITY_AUTH`
-
-### 3 - Stage session files
-
-Push images/text in `uploads/` first, then push the audio file in `uploads/`.
-
-### 4 - Trigger behavior
-
-- Images/text only: no processing run.
-- Audio pushed under `uploads/*.oga|*.mp3|*.m4a`: processing starts automatically.
-- Success: session moved to `processed/`.
-- Failure: session moved to `failed/`.
+- Images only: no processing run.
+- Audio pushed under `media-input/*.oga|*.mp3|*.m4a|...`: processing starts automatically.
+- Success: `media-input/` is cleared, ready for the next session.
 
 ## Setup Guide
 
@@ -139,7 +102,7 @@ The pipeline only processes messages from chat IDs you explicitly authorize. To 
 
 ### 4 — Trigger source
 
-The workflow trigger is the Git push that introduces `uploads/*.oga`, `uploads/*.mp3`, or `uploads/*.m4a` on branch `ingest`.
+The workflow trigger is the Git push that introduces `media-input/*.oga`, `*.ogg`, `*.mp3`, `*.m4a`, `*.wav`, or `*.webm` on branch `main`. Files can reach `media-input/` via a manual `git push` or automatically through the `Telegram Ingest Polling` workflow (see "Getting files into `media-input/`" above).
 
 ---
 
@@ -195,44 +158,54 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
 
 2. Under the **Secrets** tab, select **Repository secrets** and click **New repository secret** for each of the following:
 
-   | Secret name                 | Value                                      |
-   |-----------------------------|--------------------------------------------|
-   | `WP_ABILITY_URL`            | WordPress site URL (step 5)                |
-   | `WP_ABILITY_AUTH`           | WordPress username:app_password (step 5)   |
+   | Secret name          | Value                                                                 |
+   |-----------------------|------------------------------------------------------------------------|
+   | `WP_USERNAME`         | WordPress username (step 5)                                            |
+   | `WP_APP_PASSWORD`     | WordPress Application Password (step 5)                                |
+   | `WP_ABILITY_AUTH`     | Alternative to the two above: `username:application_password` combined |
+   | `TELEGRAM_BOT_TOKEN`  | Bot token from BotFather (step 2)                                      |
+   | `GH_DISPATCH_TOKEN`   | A Personal Access Token with `repo` scope. **Required** — pushes made with the default `GITHUB_TOKEN` do not trigger other workflows, so both `pipeline.yml` and `telegram-poll.yml` need a real PAT here to chain correctly. |
 
 3. Under the **Variables** tab, select **Repository variables** and click **New repository variable** and add:
 
-   | Variable name      | Value       |
-   |--------------------|-------------|
-   | `PIPELINE_ADAPTER` | `wordpress` |
-   | `INGEST_BRANCH`    | `ingest`    |
+   | Variable name                        | Value                                                                          |
+   |----------------------------------------|-----------------------------------------------------------------------------------|
+   | `WP_URL`                                | WordPress site URL (step 5)                                                      |
+   | `WP_ABILITY_URL`                        | Same as `WP_URL` (kept for backward compatibility)                               |
+   | `NOMAD_PIPELINE_WP_ABILITY_ENDPOINT`    | Ability endpoint path/URL — defaults to `/wp-json/wp-abilities/v1/abilities/nomad-pipeline-audio-to-draft/audio-to-post/run` if unset |
+   | `NOMAD_PIPELINE_ADAPTER`                | `wordpress`                                                                       |
+   | `WP_POST_STATUS`                        | e.g. `draft` or `publish`                                                        |
+   | `GH_INPUT_FOLDER`                       | `media-input`                                                                     |
+   | `TELEGRAM_ALLOWED_CHAT_IDS`             | Authorized chat IDs (step 3), comma-separated                                    |
 
 ---
 
-### 8 — Runtime workflow
+### 8 — Runtime workflows
 
-`Nomad Pipeline Execution` starts automatically on audio file push under `uploads/*` on branch `ingest`.
+- `Nomad Pipeline v2 Execution` (`pipeline.yml`) starts automatically on audio file push under `media-input/*` on branch `main`.
+- `Telegram Ingest Polling` (`telegram-poll.yml`) runs on a 5-minute schedule (and on demand) to pull new files from Telegram into `media-input/`.
 
 ---
 
 ### Session flow reference
 
-The workflow reads files from `uploads/` root.
-
 ```
-stage image(s) + optional .txt context in uploads/
-stage audio as uploads/audio.<ext>
-              push of audio file triggers Ingest Audio Pipeline
+send image(s) + audio to the Telegram bot
+              Telegram Ingest Polling downloads them into media-input/
+              push of an audio file triggers Nomad Pipeline v2 Execution
                  → images uploaded to WordPress media library
                  → audio uploaded to WordPress media library
-                 → ability called with structured JSON input
-              processed files moved to processed/ or failed/
+                 → Ability called with structured JSON input
+              media-input/ cleared on success
 ```
+
+Manual staging (`git push` directly into `media-input/` on `main`) works the same way, without the Telegram step.
 
 ---
 
 ### Security notes
 
 - Never commit any credential or token to the repository.
-- Keep `uploads/` as temporary staging only; do not use it as permanent storage.
+- Keep `media-input/` as temporary staging only; do not use it as permanent storage.
 - Use a dedicated WordPress user for the API credentials rather than an administrator account if your site has multiple users.
+- `TELEGRAM_ALLOWED_CHAT_IDS` is the only access control on the Telegram ingest path — keep it accurate and keep `TELEGRAM_BOT_TOKEN` private.

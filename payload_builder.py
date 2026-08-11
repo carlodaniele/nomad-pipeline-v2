@@ -2,8 +2,8 @@ import os
 import json
 import mimetypes
 import uuid
-from typing import Dict, Any, Optional
-from pydantic import BaseModel
+from typing import Dict, Any, Optional, List
+from pydantic import BaseModel, Field
 
 class AudioInputMediaId(BaseModel):
     media_id: int
@@ -13,6 +13,7 @@ class AbilityInputParams(BaseModel):
     external_run_id: str
     source: str = "api"
     audio: AudioInputMediaId
+    image_media_ids: List[int] = Field(default_factory=list)
 
 class AbilityRequestPayload(BaseModel):
     input: AbilityInputParams
@@ -28,12 +29,12 @@ def get_audio_filepath(input_folder: str) -> Optional[str]:
 
         mime_type, _ = mimetypes.guess_type(filepath)
         mime_type = mime_type or ""
-        if mime_type.startswith("audio/") or filename.lower().endswith((".mp3", ".m4a", ".wav", ".ogg", ".oga")):
+        if mime_type.startswith("audio/") or filename.lower().endswith((".mp3", ".m4a", ".wav", ".ogg", ".oga", ".webm")):
             return filepath
 
     return None
 
-def build_payload_with_media_id(media_id: int) -> Dict[str, Any]:
+def build_payload_with_media_id(audio_media_id: int, image_media_ids: Optional[List[int]] = None) -> Dict[str, Any]:
     gh_run_id = os.getenv("GITHUB_RUN_ID")
     gh_run_attempt = os.getenv("GITHUB_RUN_ATTEMPT", "1")
     if gh_run_id:
@@ -45,12 +46,13 @@ def build_payload_with_media_id(media_id: int) -> Dict[str, Any]:
         contract_version="1.0.0",
         external_run_id=external_run_id,
         source="api",
-        audio=AudioInputMediaId(media_id=media_id)
+        audio=AudioInputMediaId(media_id=audio_media_id),
+        image_media_ids=image_media_ids or []
     )
 
     payload = AbilityRequestPayload(input=params)
     return payload.model_dump(exclude_none=True)
 
 if __name__ == "__main__":
-    dummy_payload = build_payload_with_media_id(332)
+    dummy_payload = build_payload_with_media_id(332, [101, 102, 103])
     print(json.dumps(dummy_payload, indent=2))

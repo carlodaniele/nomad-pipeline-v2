@@ -164,7 +164,7 @@ def run_pipeline() -> Dict[str, Any]:
         uploaded_image_ids.append(img_id)
 
     # 3. Esecuzione Ability per generare la bozza del post
-    payload = build_payload_with_media_id(audio_media_id)
+    payload = build_payload_with_media_id(audio_media_id, uploaded_image_ids)
     auth = HTTPBasicAuth(WP_USERNAME, WP_APP_PASSWORD)
 
     print("[Pipeline] Sending POST request to Ability endpoint...")

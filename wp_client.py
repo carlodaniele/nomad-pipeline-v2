@@ -9,7 +9,10 @@ WP_URL = os.getenv("WP_URL", "https://audioconverter.kinsta.cloud")
 WP_USERNAME = os.getenv("WP_USERNAME", "")
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "")
 
-ABILITY_ENDPOINT = f"{WP_URL}/wp-json/wp-abilities/v1/abilities/nomad-pipeline-audio-to-draft/audio-to-post/run"
+ABILITY_ENDPOINT = os.getenv(
+    "NOMAD_PIPELINE_WP_ABILITY_ENDPOINT",
+    f"{WP_URL}/wp-json/wp-abilities/v1/abilities/nomad-pipeline-audio-to-draft/audio-to-post/run"
+)
 MEDIA_ENDPOINT = f"{WP_URL}/wp-json/wp/v2/media"
 POSTS_ENDPOINT = f"{WP_URL}/wp-json/wp/v2/posts"
 
@@ -120,6 +123,15 @@ def run_pipeline() -> Dict[str, Any]:
 
     response.raise_for_status()
     result = response.json()
+
+    # Intercetta il fallimento interno dell'Ability (status = failed)
+    if result.get("status") == "failed":
+        error_info = result.get("error", {})
+        err_code = error_info.get("code", "unknown_error")
+        err_msg = error_info.get("message", "No details provided")
+        print(f"[Pipeline] Ability execution failed: [{err_code}] {err_msg}")
+        raise RuntimeError(f"Ability execution failed: [{err_code}] {err_msg}")
+
     print("[Pipeline] Ability executed successfully.")
 
     post_id = result.get("post_id")

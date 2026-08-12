@@ -1,4 +1,5 @@
 import os
+import time
 import mimetypes
 import requests
 from urllib.parse import urljoin, urlparse
@@ -230,31 +231,40 @@ def run_pipeline() -> Dict[str, Any]:
     payload = build_payload_with_media_id(audio_media_id)
     auth = HTTPBasicAuth(WP_USERNAME, WP_APP_PASSWORD)
 
-    print("[Pipeline] Sending POST request to Ability endpoint...")
-    response = requests.post(
-        ABILITY_ENDPOINT,
-        json=payload,
-        auth=auth,
-        headers={"Content-Type": "application/json"},
-        timeout=180
-    )
+    # Retry su ai_provider_unavailable: errore transitorio del provider di trascrizione.
+    _ability_max_attempts = 3
+    _ability_retry_delay = 10
+    result = None
+    for attempt in range(1, _ability_max_attempts + 1):
+        print(f"[Pipeline] Sending POST request to Ability endpoint (attempt {attempt}/{_ability_max_attempts})...")
+        response = requests.post(
+            ABILITY_ENDPOINT,
+            json=payload,
+            auth=auth,
+            headers={"Content-Type": "application/json"},
+            timeout=180
+        )
 
-    if not response.ok:
-        print(f"[Pipeline] Ability Failed. Response Body: {response.text}")
+        if not response.ok:
+            print(f"[Pipeline] Ability Failed. Response Body: {response.text}")
 
-    response.raise_for_status()
-    result = response.json()
+        response.raise_for_status()
+        result = response.json()
 
-    # Intercetta il fallimento interno dell'Ability (status = failed)
-    if result.get("status") == "failed":
-        error_info = result.get("error", {})
-        err_code = error_info.get("code", "unknown_error")
-        err_msg = error_info.get("message", "No details provided")
-        print(f"[Pipeline] Ability execution failed: [{err_code}] {err_msg}")
-        raise RuntimeError(f"Ability execution failed: [{err_code}] {err_msg}")
+        if result.get("status") == "failed":
+            error_info = result.get("error", {})
+            err_code = error_info.get("code", "unknown_error")
+            err_msg = error_info.get("message", "No details provided")
+            if err_code == "ai_provider_unavailable" and attempt < _ability_max_attempts:
+                print(f"[Pipeline] AI provider unavailable, retry in {_ability_retry_delay}s...")
+                time.sleep(_ability_retry_delay)
+                continue
+            print(f"[Pipeline] Ability execution failed: [{err_code}] {err_msg}")
+            raise RuntimeError(f"Ability execution failed: [{err_code}] {err_msg}")
+
+        break
 
     print("[Pipeline] Ability executed successfully.")
-
     post_id = result.get("post_id")
 
     # 4. Le immagini vengono gestite interamente lato pipeline:

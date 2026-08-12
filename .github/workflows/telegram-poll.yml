@@ -1,11 +1,6 @@
 name: Telegram Ingest Polling
 
 on:
-  schedule:
-    # Ogni 5 minuti (minimo intervallo supportato da GitHub Actions).
-    # Nota: gli schedule di GitHub possono subire ritardi di qualche minuto
-    # sui repository poco attivi: non è un vero real-time.
-    - cron: '*/5 * * * *'
   workflow_dispatch: {}
 
 concurrency:

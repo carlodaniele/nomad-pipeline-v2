@@ -5,7 +5,7 @@ import requests
 from urllib.parse import urljoin, urlparse
 from requests.auth import HTTPBasicAuth
 from typing import Dict, Any, List, Optional
-from payload_builder import build_payload_with_media_id, get_audio_filepath
+from .payload_builder import build_payload_with_media_id, get_audio_filepath
 
 def _normalize_base_url(value: str) -> str:
     base = (value or "").strip()

@@ -70,7 +70,7 @@ jobs:
           WP_ABILITY_AUTH: ${{ secrets.WP_ABILITY_AUTH }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          python wp_client.py
+          python nomad_pipeline.py
 
       - name: Cleanup Input Folder
         if: success() && steps.audio_check.outputs.has_audio == 'true'

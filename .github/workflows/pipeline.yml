@@ -71,29 +71,44 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           AI_PROVIDER: ${{ vars.AI_PROVIDER }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          ASTRO_CONTENT_DIR: ${{ vars.ASTRO_CONTENT_DIR }}
-          ASTRO_ASSETS_DIR: ${{ vars.ASTRO_ASSETS_DIR }}
+          ASTRO_CONTENT_DIR: generated/content/blog
+          ASTRO_ASSETS_DIR: generated/public/images/blog
+          ASTRO_PUBLIC_URL_PREFIX: ${{ vars.ASTRO_PUBLIC_URL_PREFIX || '/images/blog' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python nomad_pipeline.py
 
-      - name: Commit Generated Content (Astro)
+      - name: Checkout Astro repository
+        if: success() && steps.audio_check.outputs.has_audio == 'true' && vars.NOMAD_PIPELINE_ADAPTER == 'astro'
+        uses: actions/checkout@v4
+        with:
+          repository: carlodaniele/astro-nomad-pipeline
+          token: ${{ secrets.ASTRO_REPO_TOKEN }}
+          path: astro-site
+
+      - name: Publish Generated Content (Astro)
         if: success() && steps.audio_check.outputs.has_audio == 'true' && vars.NOMAD_PIPELINE_ADAPTER == 'astro'
         run: |
+          content_dir="${ASTRO_CONTENT_DIR:-src/content/blog}"
+          assets_dir="${ASTRO_ASSETS_DIR:-public/images/blog}"
+          mkdir -p "astro-site/$content_dir" "astro-site/$assets_dir"
+          cp -R "generated/content/blog/." "astro-site/$content_dir/"
+          cp -R "generated/public/images/blog/." "astro-site/$assets_dir/"
+          cd astro-site
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${ASTRO_CONTENT_DIR:-content/blog}/" "${ASTRO_ASSETS_DIR:-public/images/blog}/"
+          git add "$content_dir/" "$assets_dir/"
           git diff --staged --quiet || git commit -m "content: add generated Astro blog post"
           git push
         env:
-          ASTRO_CONTENT_DIR: ${{ vars.ASTRO_CONTENT_DIR }}
+          ASTRO_CONTENT_DIR: ${{ secrets.ASTRO_CONTENT_DIR }}
           ASTRO_ASSETS_DIR: ${{ vars.ASTRO_ASSETS_DIR }}
-          GITHUB_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
 
       - name: Cleanup Input Folder
         if: success() && steps.audio_check.outputs.has_audio == 'true'
         run: |
           echo "Clearing media-input folder..."
+          rm -rf generated/
           rm -rf media-input/*
           touch media-input/.gitkeep
           git config user.name "github-actions[bot]"

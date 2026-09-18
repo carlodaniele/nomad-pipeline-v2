@@ -73,7 +73,7 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           ASTRO_CONTENT_DIR: generated/content/blog
           ASTRO_ASSETS_DIR: generated/public/images/blog
-          ASTRO_PUBLIC_URL_PREFIX: ${{ vars.ASTRO_PUBLIC_URL_PREFIX || '/images/blog' }}
+          ASTRO_ASSET_URL_PREFIX: ${{ vars.ASTRO_ASSET_URL_PREFIX || '../../assets/blog' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python nomad_pipeline.py

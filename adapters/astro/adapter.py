@@ -12,7 +12,7 @@ def run() -> Dict[str, Any]:
     input_folder = os.getenv("GH_INPUT_FOLDER", "media-input")
     content_dir = os.getenv("ASTRO_CONTENT_DIR", "content/blog")
     assets_dir = os.getenv("ASTRO_ASSETS_DIR", "public/images/blog")
-    public_url_prefix = os.getenv("ASTRO_PUBLIC_URL_PREFIX")
+    asset_url_prefix = os.getenv("ASTRO_ASSET_URL_PREFIX")
 
     audio_path = get_audio_filepath(input_folder)
     if not audio_path:
@@ -28,7 +28,7 @@ def run() -> Dict[str, Any]:
         image_paths,
         slug,
         assets_dir,
-        public_url_prefix=public_url_prefix,
+        asset_url_prefix=asset_url_prefix,
     )
     hero_image = published_images[0] if published_images else None
     extra_images = published_images[1:] if len(published_images) > 1 else []

@@ -1,20 +1,28 @@
 # Nomad Pipeline v2
 
-CMS-agnostic pipeline (WordPress Ability adapter) using a single runtime workflow: processing starts only when an audio file arrives in `media-input/` on branch `main`.
+CMS-agnostic pipeline (WordPress and Astro adapters) using a single runtime workflow: processing starts only when an audio file arrives in `media-input/` on branch `main`.
 
 ## How it works
 
 1. Files are staged into `media-input/` (images and one audio file per session), either manually via `git push` or automatically via the Telegram ingest workflow described below.
 2. When an audio file matching `media-input/*.oga|*.ogg|*.mp3|*.m4a|*.wav|*.webm` is pushed to `main`, the `Nomad Pipeline v2 Execution` workflow starts automatically.
-3. The workflow (`wp_client.py`): uploads the audio and any images to the WordPress Media Library, builds the Ability input JSON (`payload_builder.py`), and calls the WordPress Ability endpoint to generate the post.
+3. `nomad_pipeline.py` reads `NOMAD_PIPELINE_ADAPTER` and delegates to the selected adapter:
+   - `wordpress`: uploads the audio and any images to the WordPress Media Library, builds the Ability input JSON, and calls the WordPress Ability endpoint — transcription and content generation happen inside WordPress.
+   - `astro`: calls the shared AI engine (`core/ai_engine/`, Gemini by default) directly to transcribe the audio and generate the post, then writes a Markdown file (plus any images) into the Astro content collection.
 4. On success, `media-input/` is emptied (cleanup step) so the folder is ready for the next session.
 
 ## Repository structure
 
 ```
-telegram_poll.py          Polls Telegram for new files and stages them into media-input/
-wp_client.py               Uploads media to WordPress and calls the Ability endpoint
-payload_builder.py         Builds the Ability request payload
+telegram_poll.py            Polls Telegram for new files and stages them into media-input/
+nomad_pipeline.py           Orchestrator — picks the adapter via NOMAD_PIPELINE_ADAPTER
+core/ai_engine/             CMS-agnostic AI provider abstraction (used by non-WordPress adapters)
+  base.py                    AIProvider interface + ContentResult contract
+  content_generator.py       Provider factory, selected via AI_PROVIDER
+  gemini_client.py           Gemini implementation (transcription + content generation)
+  prompts.py                 Shared prompt template
+adapters/wordpress/         Uploads media to WordPress and calls the Ability endpoint
+adapters/astro/             Generates a Markdown post via core/ai_engine and writes it to the content collection
 media-input/                Staging folder — temporary only, do not use as permanent storage
 .github/workflows/
   pipeline.yml              Runs on push of an audio file to media-input/ (branch main)
@@ -149,6 +157,23 @@ This combined string is the value for `WP_ABILITY_AUTH`. The spaces in the passw
 > The WordPress site must have the **Nomad Pipeline Audio to Draft** plugin installed and activated.
 
 > **Note on AI costs:** transcription and content generation happen inside WordPress via the AI connector you configure in the plugin (Settings → AI Connector). You do not need a separate OpenAI API key for this pipeline.
+
+---
+
+### 6 — Astro adapter configuration (`GEMINI_API_KEY`, `ASTRO_CONTENT_DIR`, `ASTRO_ASSETS_DIR`)
+
+These are required only when using the `astro` adapter. Unlike WordPress, Astro is a static site generator with no built-in AI backend, so the pipeline calls an AI provider directly via `core/ai_engine/`.
+
+| Variable | Kind | Description |
+|---|---|---|
+| `NOMAD_PIPELINE_ADAPTER` | variable | Set to `astro` |
+| `AI_PROVIDER` | variable | AI provider used by the ai_engine (default: `gemini`) |
+| `GEMINI_API_KEY` | secret | API key for Google Gemini (get one at [aistudio.google.com](https://aistudio.google.com/apikey)) |
+| `GEMINI_MODEL` | variable | Gemini model name (default: `gemini-2.5-flash`) |
+| `ASTRO_CONTENT_DIR` | variable | Folder where the generated `.md` post is written (default: `content/blog`) |
+| `ASTRO_ASSETS_DIR` | variable | Folder where staged images are copied (default: `public/images/blog`) |
+
+The generated post uses frontmatter (`title`, `description`, `pubDate`, `tags`, `heroImage`) followed by the Markdown body. A dedicated workflow step (`Commit Generated Content (Astro)`) commits and pushes `ASTRO_CONTENT_DIR` and `ASTRO_ASSETS_DIR` when the adapter is `astro`.
 
 ---
 

@@ -5,7 +5,7 @@ adapter = os.getenv("NOMAD_PIPELINE_ADAPTER", "wordpress")
 if adapter == "wordpress":
     from adapters.wordpress.adapter import run
 elif adapter == "astro":
-    raise NotImplementedError("Astro adapter not yet implemented.")
+    from adapters.astro.adapter import run
 else:
     raise ValueError(f"Unknown adapter: {adapter}")
 

@@ -10,7 +10,7 @@ from .payload_builder import build_payload_with_media_id, get_audio_filepath
 def _normalize_base_url(value: str) -> str:
     base = (value or "").strip()
     if not base:
-        raise ValueError("WP_URL/WP_BASE_URL non configurata nelle variabili d'ambiente.")
+        raise ValueError("WP_URL/WP_BASE_URL is not configured in the environment variables.")
 
     parsed = urlparse(base)
     if not parsed.scheme:
@@ -22,7 +22,7 @@ def _normalize_base_url(value: str) -> str:
 def _normalize_endpoint(base_url: str, endpoint: str) -> str:
     raw = (endpoint or "").strip()
     if not raw:
-        raise ValueError("NOMAD_PIPELINE_WP_ABILITY_ENDPOINT non configurato.")
+        raise ValueError("NOMAD_PIPELINE_WP_ABILITY_ENDPOINT is not configured.")
 
     parsed = urlparse(raw)
     if parsed.scheme and parsed.netloc:
@@ -51,7 +51,7 @@ def _resolve_wp_credentials() -> tuple[str, str]:
 
     if not username or not app_password:
         raise ValueError(
-            "Credenziali WP mancanti: configura WP_USERNAME+WP_APP_PASSWORD oppure WP_ABILITY_AUTH."
+            "Missing WP credentials: configure WP_USERNAME+WP_APP_PASSWORD or WP_ABILITY_AUTH."
         )
 
     return username, app_password
@@ -91,7 +91,7 @@ def upload_file_to_wordpress(filepath: str) -> Dict[str, Any]:
     }
 
     if not WP_USERNAME or not WP_APP_PASSWORD:
-        raise ValueError("WP_USERNAME o WP_APP_PASSWORD non configurati nelle variabili d'ambiente.")
+        raise ValueError("WP_USERNAME or WP_APP_PASSWORD is not configured in the environment variables.")
 
     auth = HTTPBasicAuth(WP_USERNAME, WP_APP_PASSWORD)
 
@@ -151,7 +151,7 @@ def build_media_blocks(images: List[Dict[str, Any]]) -> str:
     """
     Genera il markup dei blocchi Gutenberg (wp:image singolo o wp:gallery)
     a partire da id/url delle immagini gia' caricate. Questo e' puro markup
-    locale: gli id delle immagini non vengono mai inviati all'Ability.
+    local: image IDs are never sent to the Ability.
     """
     images = [img for img in images if img.get("id") and img.get("url")]
     if not images:
@@ -206,7 +206,7 @@ def append_media_blocks_to_post(post_id: int, images: List[Dict[str, Any]]) -> N
     if response.ok:
         print(f"[Pipeline] Blocchi immagine/galleria aggiunti al post {post_id}.")
     else:
-        print(f"[Pipeline] Errore aggiunta blocchi immagine: {response.status_code} {response.text}")
+        print(f"[Pipeline] Error adding image blocks: {response.status_code} {response.text}")
 
 def run_pipeline() -> Dict[str, Any]:
     input_folder = os.getenv("GH_INPUT_FOLDER", "media-input")
@@ -226,12 +226,12 @@ def run_pipeline() -> Dict[str, Any]:
     for img_path in image_paths:
         uploaded_images.append(upload_file_to_wordpress(img_path))
 
-    # 3. Esecuzione Ability per generare la bozza del post.
-    # Il payload contiene SOLO l'audio: l'Ability non accetta image_media_ids.
+    # 3. Run the Ability to generate the post draft.
+    # The payload contains ONLY the audio: the Ability does not accept image_media_ids.
     payload = build_payload_with_media_id(audio_media_id)
     auth = HTTPBasicAuth(WP_USERNAME, WP_APP_PASSWORD)
 
-    # Retry su ai_provider_unavailable: errore transitorio del provider di trascrizione.
+    # Retry on ai_provider_unavailable: transient error from the transcription provider.
     _ability_max_attempts = 3
     _ability_retry_delay = 10
     result = None
@@ -268,8 +268,8 @@ def run_pipeline() -> Dict[str, Any]:
     post_id = result.get("post_id")
 
     # 4. Le immagini vengono gestite interamente lato pipeline:
-    #    - associate come allegati del post
-    #    - la prima impostata come immagine in evidenza
+    #    - attached to the post
+    #    - the first one set as the featured image
     #    - i blocchi wp:image / wp:gallery generati qui e aggiunti al content
     if post_id and uploaded_images:
         print(f"[Pipeline] Attaching {len(uploaded_images)} images to post {post_id}...")

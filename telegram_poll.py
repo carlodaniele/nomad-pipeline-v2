@@ -1,12 +1,12 @@
 """
 Nomad Pipeline v2 - Telegram Ingest (polling mode)
 
-Non usa un webhook Telegram vero e proprio (richiederebbe un server sempre
-acceso). Interroga periodicamente `getUpdates` e scarica i file multimediali
-ricevuti dalle chat autorizzate dentro GH_INPUT_FOLDER (default: media-input/).
+Does not use a real Telegram webhook (that would require an always-on
+server). Periodically polls `getUpdates` and downloads media files
+received from authorized chats into GH_INPUT_FOLDER (default: media-input/).
 
-Pensato per essere eseguito da un workflow GitHub Actions schedulato
-(vedi .github/workflows/telegram-poll.yml).
+Meant to be run from a scheduled GitHub Actions workflow
+(see .github/workflows/telegram-poll.yml).
 """
 
 import os
@@ -26,12 +26,12 @@ FILE_BASE = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}"
 
 
 def ensure_polling_mode():
-    """getUpdates fallisce con 409 Conflict se esiste ancora un webhook attivo."""
+    """getUpdates fails with 409 Conflict if a webhook is still active."""
     resp = requests.get(f"{API_BASE}/getWebhookInfo", timeout=30)
     resp.raise_for_status()
     info = resp.json().get("result", {})
     if info.get("url"):
-        print(f"[Telegram] Rimuovo webhook residuo: {info['url']}")
+        print(f"[Telegram] Removing leftover webhook: {info['url']}")
         requests.get(f"{API_BASE}/deleteWebhook", timeout=30)
 
 
@@ -58,7 +58,7 @@ def get_updates(offset: int):
     resp.raise_for_status()
     data = resp.json()
     if not data.get("ok"):
-        raise RuntimeError(f"getUpdates fallita: {data}")
+        raise RuntimeError(f"getUpdates failed: {data}")
     return data["result"]
 
 
@@ -85,7 +85,7 @@ def safe_name(chat_id: str, message_id: int, suggested_name, fallback_ext: str) 
 
 
 def extract_media(message: dict):
-    """Ritorna (file_id, nome_suggerito, estensione) oppure None."""
+    """Returns (file_id, suggested_name, extension) or None."""
     if "voice" in message:
         v = message["voice"]
         return v["file_id"], None, ".oga"
@@ -105,7 +105,7 @@ def extract_media(message: dict):
             return d["file_id"], name, ext
 
     if "photo" in message and message["photo"]:
-        # Telegram invia più risoluzioni della stessa foto: prendiamo la più grande (ultima).
+        # Telegram sends multiple resolutions of the same photo: keep the largest (last) one.
         p = message["photo"][-1]
         return p["file_id"], None, ".jpg"
 
@@ -119,7 +119,7 @@ def main():
     updates = get_updates(offset)
 
     if not updates:
-        print("[Telegram] Nessun nuovo aggiornamento.")
+        print("[Telegram] No new updates.")
         write_offset(offset)
         return
 
@@ -136,7 +136,7 @@ def main():
 
         chat_id = str(message.get("chat", {}).get("id"))
         if ALLOWED_CHAT_IDS and chat_id not in ALLOWED_CHAT_IDS:
-            print(f"[Telegram] Chat non autorizzata ignorata: {chat_id}")
+            print(f"[Telegram] Ignoring unauthorized chat: {chat_id}")
             continue
 
         media = extract_media(message)
@@ -147,18 +147,18 @@ def main():
         filename = safe_name(chat_id, message["message_id"], suggested_name, ext)
         dest_path = os.path.join(INPUT_FOLDER, filename)
 
-        print(f"[Telegram] Scarico {filename} da chat {chat_id}...")
+        print(f"[Telegram] Downloading {filename} from chat {chat_id}...")
         download_telegram_file(file_id, dest_path)
         saved_files.append(dest_path)
 
-    # Avanziamo l'offset anche per gli update ignorati/non autorizzati,
-    # altrimenti verrebbero riletti a ogni polling successivo.
+    # Advance the offset even for ignored/unauthorized updates,
+    # otherwise they would be re-read on every subsequent poll.
     write_offset(max_update_id + 1)
 
     if saved_files:
-        print(f"[Telegram] {len(saved_files)} file salvati in '{INPUT_FOLDER}': {saved_files}")
+        print(f"[Telegram] {len(saved_files)} files saved in '{INPUT_FOLDER}': {saved_files}")
     else:
-        print("[Telegram] Nessun file multimediale valido nei nuovi aggiornamenti.")
+        print("[Telegram] No valid media file in the new updates.")
 
 
 if __name__ == "__main__":

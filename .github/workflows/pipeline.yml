@@ -69,13 +69,31 @@ jobs:
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           WP_ABILITY_AUTH: ${{ secrets.WP_ABILITY_AUTH }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          AI_PROVIDER: ${{ vars.AI_PROVIDER }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          ASTRO_CONTENT_DIR: ${{ vars.ASTRO_CONTENT_DIR }}
+          ASTRO_ASSETS_DIR: ${{ vars.ASTRO_ASSETS_DIR }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python nomad_pipeline.py
+
+      - name: Commit Generated Content (Astro)
+        if: success() && steps.audio_check.outputs.has_audio == 'true' && vars.NOMAD_PIPELINE_ADAPTER == 'astro'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${ASTRO_CONTENT_DIR:-content/blog}/" "${ASTRO_ASSETS_DIR:-public/images/blog}/"
+          git diff --staged --quiet || git commit -m "content: add generated Astro blog post"
+          git push
+        env:
+          ASTRO_CONTENT_DIR: ${{ vars.ASTRO_CONTENT_DIR }}
+          ASTRO_ASSETS_DIR: ${{ vars.ASTRO_ASSETS_DIR }}
+          GITHUB_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
 
       - name: Cleanup Input Folder
         if: success() && steps.audio_check.outputs.has_audio == 'true'
         run: |
-          echo "Svuotamento cartella media-input..."
+          echo "Clearing media-input folder..."
           rm -rf media-input/*
           touch media-input/.gitkeep
           git config user.name "github-actions[bot]"

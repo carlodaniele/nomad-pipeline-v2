@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Nomad Pipeline Astro Settings",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "language": {
+      "type": "string",
+      "description": "Output language. Use 'auto' to preserve the audio language, or a BCP 47 locale such as 'en-US', 'en-GB', 'it-IT', 'de-DE', 'fr-FR', 'es-ES', 'nl-NL', or 'pl-PL'.",
+      "pattern": "^(auto|[a-z]{2,3}(-[A-Z]{2})?)$",
+      "examples": ["auto", "en-US", "en-GB", "it-IT", "de-DE", "fr-FR", "es-ES", "nl-NL", "pl-PL"]
+    },
+    "tone": {
+      "type": "string",
+      "description": "Editorial voice for generated content.",
+      "enum": ["professional", "neutral", "conversational"]
+    },
+    "target_length": {
+      "type": "string",
+      "description": "Target post length.",
+      "enum": ["short", "medium", "long"]
+    },
+    "proper_noun_hints": {
+      "type": "array",
+      "description": "Names, brands, places, or terms that must be spelled correctly.",
+      "default": ["Astro"],
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "description": "Additional editorial instructions for generated content.",
+      "default": ["Use clear headings and short paragraphs."],
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "required": [
+    "language",
+    "tone",
+    "target_length",
+    "proper_noun_hints",
+    "constraints"
+  ]
+}

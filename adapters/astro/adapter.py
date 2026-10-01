@@ -1,4 +1,6 @@
+import json
 import os
+import re
 from typing import Any, Dict
 
 from core.ai_engine import generate_content
@@ -18,6 +20,21 @@ def run() -> Dict[str, Any]:
     if not audio_path:
         raise FileNotFoundError(f"No audio file found in folder '{input_folder}'.")
 
+    metadata_path = f"{audio_path}.json"
+    journey_id = ""
+    if os.path.exists(metadata_path):
+        with open(metadata_path, "r", encoding="utf-8") as metadata_file:
+            journey_id = json.load(metadata_file)["journey_id"].strip()
+
+    if journey_id:
+        if not re.fullmatch(r"[0-9]{4}-[a-z0-9]+(?:-[a-z0-9]+)*", journey_id):
+            raise ValueError(f"Invalid JOURNEY_ID: {journey_id!r}")
+        journeys_dir = os.getenv("ASTRO_JOURNEYS_DIR", "astro-site/src/content/journeys")
+        if not os.path.isdir(journeys_dir):
+            raise FileNotFoundError(f"Astro journeys directory unavailable: {journeys_dir}")
+        if not os.path.isfile(os.path.join(journeys_dir, f"{journey_id}.md")):
+            raise ValueError(f"Unknown JOURNEY_ID in Astro repository: {journey_id}")
+
     image_paths = get_image_filepaths(input_folder)
 
     print("[Pipeline] Generating content from audio via AI provider...")
@@ -33,7 +50,7 @@ def run() -> Dict[str, Any]:
     hero_image = published_images[0] if published_images else None
     extra_images = published_images[1:] if len(published_images) > 1 else []
 
-    markdown = build_markdown(result, hero_image=hero_image, extra_images=extra_images)
+    markdown = build_markdown(result, hero_image=hero_image, extra_images=extra_images, journey_id=journey_id)
     filename = build_filename(result.title)
     filepath = publish_post(filename, markdown, content_dir)
 

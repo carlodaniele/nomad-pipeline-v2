@@ -24,6 +24,9 @@ class AstroPromptSettingsTests(unittest.TestCase):
         self.assertIn("Extra context", main)
         self.assertIn("Transcribed text", main)
         self.assertNotIn("Write in English (United States)", main)
+        self.assertIn("Start the article body with a plain introductory paragraph", main)
+        self.assertIn("level-two Markdown headings (##)", main)
+        self.assertIn("Do not write image Markdown or image paths", main)
 
     def test_final_prompt_keeps_system_and_runtime_separated(self):
         settings = load_astro_settings()

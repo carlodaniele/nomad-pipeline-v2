@@ -26,7 +26,7 @@ adapters/astro/             Generates a Markdown post via core/ai_engine and wri
 media-input/                Staging folder — temporary only, do not use as permanent storage
 .github/workflows/
   pipeline.yml              Runs on push of an audio file to media-input/ (branch main)
-  telegram-poll.yml          Scheduled polling job that feeds media-input/ from Telegram
+   telegram-poll.yml          Dispatched polling job that feeds media-input/ from Telegram
 ```
 
 ## Getting files into `media-input/`
@@ -34,7 +34,7 @@ media-input/                Staging folder — temporary only, do not use as per
 There are two ways to stage a session:
 
 - **Manual:** `git push` the image(s) first, then the audio file, directly into `media-input/` on `main`.
-- **Automatic (Telegram):** send the audio (and optional images) to your Telegram bot. The `Telegram Ingest Polling` workflow (`telegram-poll.yml`) runs every 5 minutes (or on demand via "Run workflow"), downloads any new files from authorized chats, and commits them into `media-input/`, which then triggers `pipeline.yml`.
+- **Automatic (Telegram):** send the audio (and optional images) to your Telegram bot. A Kinsta cron dispatches `Telegram Ingest Polling` (`telegram-poll.yml`) every 5 minutes (or it can be run on demand). GitHub Actions downloads new files from authorized chats, snapshots `JOURNEY_ID` into an audio-sidecar `.json` file, and commits them into `media-input/`, which then triggers `pipeline.yml`.
 
   This uses Telegram's `getUpdates` polling, not a real webhook — GitHub Actions has no always-on server to receive one. If `getUpdates` starts failing with a `409 Conflict`, it means an old webhook (e.g. from the legacy v1 project) is still registered; the polling script detects and removes it automatically on each run.
 
@@ -172,8 +172,17 @@ These are required only when using the `astro` adapter. Unlike WordPress, Astro 
 | `GEMINI_MODEL` | variable | Gemini model name (default: `gemini-2.5-flash`) |
 | `ASTRO_CONTENT_DIR` | variable | Folder where the generated `.md` post is written (default: `content/blog`) |
 | `ASTRO_ASSETS_DIR` | variable | Folder where staged images are copied (default: `public/images/blog`) |
+| `JOURNEY_ID` | variable | Optional journey file ID, e.g. `2026-spain-morocco` (without `.md`) |
+| `ASTRO_REPO_TOKEN` | secret | Fine-grained GitHub token limited to the Astro repository with `Contents: Read and write` for checkout and publishing |
 
-The generated post uses frontmatter (`title`, `description`, `pubDate`, `tags`, `heroImage`) followed by the Markdown body. A dedicated workflow step (`Commit Generated Content (Astro)`) commits and pushes `ASTRO_CONTENT_DIR` and `ASTRO_ASSETS_DIR` when the adapter is `astro`.
+Set `JOURNEY_ID` under **Settings → Secrets and variables → Actions → Repository variables** in `carlodaniele/nomad-pipeline-v2` (the source repository), not in `carlodaniele/astro-nomad-pipeline`. The poll workflow reads it once when staging each audio and stores the trimmed value in `media-input/<audio filename>.json`. Changing the variable later does not reassign staged audio. For manual audio pushes, stage a matching `.json` sidecar containing `{"journey_id":"2026-spain-morocco"}` before pushing the audio; without one, the article remains in the general blog. Blank values also omit `journey`.
+
+Before Gemini generation, the Astro adapter checks a nonempty ID against `src/content/journeys/<ID>.md` in the Astro repository checked out with `ASTRO_REPO_TOKEN`. An invalid or unknown ID, or a failed checkout, stops the run before publishing. The generated post includes optional `journey` alongside `title`, `description`, `pubDate`, `tags`, and `heroImage` in its frontmatter. The publish step commits and pushes the Markdown and images in a single Astro repository commit.
+
+With multiple images, the first becomes the hero image. The others are inserted in order at the end of successive `##` sections; any images beyond the number of sections are appended at the end of the post. If the article has no `##` sections, all additional images appear at the end.
+The article body must begin with an introductory paragraph before its first heading. If the AI returns an empty body or starts with a heading, generation fails before the Markdown is published.
+
+Kinsta only dispatches the GitHub Actions poll workflow; it does not run the polling script or the pipeline. No `JOURNEY_ID` or `GITHUB_VARIABLES_TOKEN` environment variable is needed on Kinsta. The workflows use the GitHub Actions `vars.JOURNEY_ID` context, not the GitHub REST API. If polling were moved to a Kinsta process in the future, that would require a dedicated token with `Actions: read` on the source repository to retrieve repository variables; the Astro publishing token should not be reused for that purpose.
 
 ---
 
@@ -190,6 +199,7 @@ The generated post uses frontmatter (`title`, `description`, `pubDate`, `tags`, 
    | `WP_ABILITY_AUTH`     | Alternative to the two above: `username:application_password` combined |
    | `TELEGRAM_BOT_TOKEN`  | Bot token from BotFather (step 2)                                      |
    | `GH_DISPATCH_TOKEN`   | A Personal Access Token with `repo` scope. **Required** — pushes made with the default `GITHUB_TOKEN` do not trigger other workflows, so both `pipeline.yml` and `telegram-poll.yml` need a real PAT here to chain correctly. |
+   | `ASTRO_REPO_TOKEN`   | Fine-grained token for `carlodaniele/astro-nomad-pipeline` with `Contents: Read and write` (Astro adapter only) |
 
 3. Under the **Variables** tab, select **Repository variables** and click **New repository variable** and add:
 
@@ -202,13 +212,14 @@ The generated post uses frontmatter (`title`, `description`, `pubDate`, `tags`, 
    | `WP_POST_STATUS`                        | e.g. `draft` or `publish`                                                        |
    | `GH_INPUT_FOLDER`                       | `media-input`                                                                     |
    | `TELEGRAM_ALLOWED_CHAT_IDS`             | Authorized chat IDs (step 3), comma-separated                                    |
+   | `JOURNEY_ID`                             | Optional Astro journey ID matching an existing `src/content/journeys/<ID>.md` (e.g. `2026-spain-morocco`) |
 
 ---
 
 ### 8 — Runtime workflows
 
 - `Nomad Pipeline v2 Execution` (`pipeline.yml`) starts automatically on audio file push under `media-input/*` on branch `main`.
-- `Telegram Ingest Polling` (`telegram-poll.yml`) runs on a 5-minute schedule (and on demand) to pull new files from Telegram into `media-input/`.
+- Kinsta dispatches `Telegram Ingest Polling` (`telegram-poll.yml`) every 5 minutes; it can also run on demand. The workflow pulls new files from Telegram into `media-input/`.
 
 ---
 

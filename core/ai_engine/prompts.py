@@ -25,6 +25,11 @@ MAIN_PROMPT_TEMPLATE = """Create a blog post from the attached audio and any pro
 If a transcript is available, use it as the primary source.
 If extra context is provided, use it as supporting background only.
 Do not copy the context verbatim.
+Start the article body with a plain introductory paragraph, not a heading or a repetition of the title.
+Place the first Markdown heading only after that opening paragraph.
+Use meaningful level-two Markdown headings (##) for the main sections of the article.
+When multiple images are provided, write sections that can accommodate them naturally, without inventing details not supported by the audio or images.
+Do not write image Markdown or image paths in the content: the publisher uses the first image as the hero, places one remaining image at the end of each section, and appends any leftovers at the end of the post.
 
 Transcript:
 {transcript}

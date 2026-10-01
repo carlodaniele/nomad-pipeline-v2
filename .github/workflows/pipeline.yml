@@ -55,6 +55,14 @@ jobs:
             echo "Nessun audio in media-input: skip esecuzione pipeline."
           fi
 
+      - name: Checkout Astro repository
+        if: steps.audio_check.outputs.has_audio == 'true' && vars.NOMAD_PIPELINE_ADAPTER == 'astro'
+        uses: actions/checkout@v4
+        with:
+          repository: carlodaniele/astro-nomad-pipeline
+          token: ${{ secrets.ASTRO_REPO_TOKEN }}
+          path: astro-site
+
       - name: Execute Pipeline
         if: steps.audio_check.outputs.has_audio == 'true'
         env:
@@ -74,17 +82,10 @@ jobs:
           ASTRO_CONTENT_DIR: generated/content/blog
           ASTRO_ASSETS_DIR: generated/public/images/blog
           ASTRO_ASSET_URL_PREFIX: ${{ vars.ASTRO_ASSET_URL_PREFIX || '../../assets/blog' }}
+          ASTRO_JOURNEYS_DIR: astro-site/src/content/journeys
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python nomad_pipeline.py
-
-      - name: Checkout Astro repository
-        if: success() && steps.audio_check.outputs.has_audio == 'true' && vars.NOMAD_PIPELINE_ADAPTER == 'astro'
-        uses: actions/checkout@v4
-        with:
-          repository: carlodaniele/astro-nomad-pipeline
-          token: ${{ secrets.ASTRO_REPO_TOKEN }}
-          path: astro-site
 
       - name: Publish Generated Content (Astro)
         if: success() && steps.audio_check.outputs.has_audio == 'true' && vars.NOMAD_PIPELINE_ADAPTER == 'astro'

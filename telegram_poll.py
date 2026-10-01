@@ -9,6 +9,7 @@ Meant to be run from a scheduled GitHub Actions workflow
 (see .github/workflows/telegram-poll.yml).
 """
 
+import json
 import os
 import re
 import mimetypes
@@ -149,6 +150,9 @@ def main():
 
         print(f"[Telegram] Downloading {filename} from chat {chat_id}...")
         download_telegram_file(file_id, dest_path)
+        if os.path.splitext(filename)[1].lower() in (".oga", ".ogg", ".mp3", ".m4a", ".wav", ".webm"):
+            with open(f"{dest_path}.json", "w", encoding="utf-8") as metadata_file:
+                json.dump({"journey_id": os.getenv("JOURNEY_ID", "").strip()}, metadata_file)
         saved_files.append(dest_path)
 
     # Advance the offset even for ignored/unauthorized updates,

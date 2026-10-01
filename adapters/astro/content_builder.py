@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import date
 from typing import List, Optional
@@ -15,11 +16,13 @@ def _yaml_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def build_frontmatter(result: ContentResult, hero_image: Optional[str] = None) -> str:
+def build_frontmatter(result: ContentResult, hero_image: Optional[str] = None, journey_id: str = "") -> str:
     lines = ["---"]
     lines.append(f'title: "{_yaml_escape(result.title)}"')
     lines.append(f'description: "{_yaml_escape(result.description)}"')
     lines.append(f"pubDate: {date.today().isoformat()}")
+    if journey_id:
+        lines.append(f"journey: {json.dumps(journey_id)}")
 
     if result.tags:
         tags_yaml = ", ".join(f'"{_yaml_escape(tag)}"' for tag in result.tags)
@@ -36,13 +39,27 @@ def build_markdown(
     result: ContentResult,
     hero_image: Optional[str] = None,
     extra_images: Optional[List[str]] = None,
+    journey_id: str = "",
 ) -> str:
-    frontmatter = build_frontmatter(result, hero_image)
+    frontmatter = build_frontmatter(result, hero_image, journey_id)
     body = result.content.strip()
+    if not body or re.match(r"^#{1,6}(?:[ \t]+|$)", body):
+        raise ValueError("Article body must begin with an introductory paragraph, not a heading.")
 
-    for image_path in extra_images or []:
-        body += f'\n\n![{result.title}]({image_path})'
+    sections = re.split(r"(?m)(?=^##[ \t]+\S)", body)
+    body_parts = [sections[0].strip()] if sections[0].strip() else []
+    images = iter(extra_images or [])
+    for section in sections[1:]:
+        text = section.strip()
+        image_path = next(images, None)
+        if image_path:
+            text += f'\n\n![{result.title}]({image_path})'
+        body_parts.append(text)
 
+    for image_path in images:
+        body_parts.append(f'![{result.title}]({image_path})')
+
+    body = "\n\n".join(body_parts)
     return f"{frontmatter}\n\n{body}\n"
 
 

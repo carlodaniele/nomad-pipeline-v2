@@ -182,6 +182,14 @@ Before Gemini generation, the Astro adapter checks a nonempty ID against `src/co
 With multiple images, the first becomes the hero image. The others are inserted in order at the end of successive `##` sections; any images beyond the number of sections are appended at the end of the post. If the article has no `##` sections, all additional images appear at the end.
 The article body must begin with an introductory paragraph before its first heading. If the AI returns an empty body or starts with a heading, generation fails before the Markdown is published.
 
+### Customize the Astro prompt
+
+The Astro adapter's prompt templates are in `core/ai_engine/prompts.py`. Edit `SYSTEM_INSTRUCTIONS_TEMPLATE` for authoring rules and editorial constraints, or `MAIN_PROMPT_TEMPLATE` for instructions about the source material, article structure, and images. The Gemini provider combines these templates when generating content. These changes affect the Astro adapter only; WordPress uses the prompt implemented in its plugin.
+
+The Astro adapter also reads `adapters/astro/settings.json` for the currently supported `language`, `tone`, `target_length`, `proper_noun_hints`, and `constraints` values. If you add a new configurable value, add it to `DEFAULT_SETTINGS` in `adapters/astro/settings_loader.py` and to `adapters/astro/settings.schema.json`, then pass it into the prompt template in `core/ai_engine/prompts.py`. The active persona is currently fixed in `SYSTEM_INSTRUCTIONS_TEMPLATE`; the other personas documented as comments are alternatives and do not affect generation unless selected in the template or implemented as a setting.
+
+Keep the prompt's JSON output fields compatible with the content schema expected by the AI engine and Astro adapter when changing output instructions.
+
 Kinsta only dispatches the GitHub Actions poll workflow; it does not run the polling script or the pipeline. No `JOURNEY_ID` or `GITHUB_VARIABLES_TOKEN` environment variable is needed on Kinsta. The workflows use the GitHub Actions `vars.JOURNEY_ID` context, not the GitHub REST API. If polling were moved to a Kinsta process in the future, that would require a dedicated token with `Actions: read` on the source repository to retrieve repository variables; the Astro publishing token should not be reused for that purpose.
 
 ---

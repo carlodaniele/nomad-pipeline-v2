@@ -18,6 +18,9 @@ class AstroPromptSettingsTests(unittest.TestCase):
         self.assertIn("neutral tone", system.lower())
         self.assertIn("Astro", system)
         self.assertIn("Use clear headings and short paragraphs.", system)
+        self.assertIn('use "I/my" for a solo trip', system)
+        self.assertIn('"we/our" when the author is part of a group trip', system)
+        self.assertIn("Do not infer that the author is part of a group", system)
 
     def test_main_prompt_keeps_runtime_work(self):
         main = build_main_prompt(context_text="Extra context", transcript="Transcribed text")

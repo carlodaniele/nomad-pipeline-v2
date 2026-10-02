@@ -2,7 +2,7 @@
   "$schema": "./settings.schema.json",
   "language": "en-US",
   "tone": "neutral",
-  "target_length": "medium",
+  "target_length": "long",
   "proper_noun_hints": ["Astro"],
   "constraints": ["Use clear headings and short paragraphs."]
 }

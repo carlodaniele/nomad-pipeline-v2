@@ -4,6 +4,10 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Path to the JSON Schema file used by editors for validation and completion."
+    },
     "language": {
       "type": "string",
       "description": "Output language. Use 'auto' to preserve the audio language, or a BCP 47 locale such as 'en-US', 'en-GB', 'it-IT', 'de-DE', 'fr-FR', 'es-ES', 'nl-NL', or 'pl-PL'.",
@@ -17,7 +21,7 @@
     },
     "target_length": {
       "type": "string",
-      "description": "Target post length.",
+      "description": "Target article-body length: short (500-700 words), medium (800-1,000 words), or long (1,200-1,800 words). The source must support the requested length without repetition or invented details.",
       "enum": ["short", "medium", "long"]
     },
     "proper_noun_hints": {

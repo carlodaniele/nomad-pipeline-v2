@@ -18,6 +18,8 @@ class AstroPromptSettingsTests(unittest.TestCase):
         self.assertIn("neutral tone", system.lower())
         self.assertIn("Astro", system)
         self.assertIn("Use clear headings and short paragraphs.", system)
+        self.assertIn("1,200-1,800 words", system)
+        self.assertIn("do not stop at a brief summary", system)
         self.assertIn('use "I/my" for a solo trip', system)
         self.assertIn('"we/our" when the author is part of a group trip', system)
         self.assertIn("Do not infer that the author is part of a group", system)

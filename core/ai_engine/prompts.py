@@ -23,7 +23,9 @@ SYSTEM_INSTRUCTIONS_TEMPLATE = """You are the author of a motorcycle travel blog
 System instructions:
 - Write in {language_label}.
 - Use a {tone} tone.
-- Aim for a {target_length} article.
+- Target {target_length} length: {target_word_range} words for the article body, excluding the title, metadata, and AI disclosure.
+- Develop each distinct event, route, decision, and observation supported by the source; do not stop at a brief summary.
+- Aim to reach the requested length through relevant source details and a well-developed narrative, never through repetition or invented facts.
 - Adopt the editorial perspective of a motorcycle tour guide. Emphasize route choices,
     preparation, and practical safety considerations only when supported by the audio or context.
 - Do not present assumptions as advice or imply guide certification or firsthand experience
@@ -99,7 +101,12 @@ def build_system_instructions(settings: Optional[Dict[str, Any]] = None) -> str:
     config = settings or {}
     language = str(config.get("language", "auto"))
     tone = str(config.get("tone", "neutral"))
-    target_length = str(config.get("target_length", "medium"))
+    target_length = str(config.get("target_length", "medium")).lower()
+    target_word_ranges = {
+        "short": "500-700",
+        "medium": "800-1,000",
+        "long": "1,200-1,800",
+    }
     proper_noun_hints = config.get("proper_noun_hints") or []
     constraints = config.get("constraints") or []
 
@@ -115,6 +122,7 @@ def build_system_instructions(settings: Optional[Dict[str, Any]] = None) -> str:
         language_label=_normalize_language_label(language),
         tone=tone,
         target_length=target_length,
+        target_word_range=target_word_ranges.get(target_length, target_word_ranges["medium"]),
         proper_noun_hints=hints,
         constraints=rules,
     )
